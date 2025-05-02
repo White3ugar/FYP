@@ -1,0 +1,6 @@
+#a523e2
+Color.fromARGB(255, 165, 35, 226)
+#f771d2
+Color.fromARGB(255, 247,113,210)
+icon website: https://www.flaticon.com/
+color picker website: https://imagecolorpicker.com/
