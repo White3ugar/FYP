@@ -36,6 +36,7 @@ dependencies:
   fl_chart: ^0.64.0 # Charting library for data visualization
   intl: ^0.18.1 # Date and time formatting
   smooth_page_indicator: ^1.1.0 # Page indicator for smooth transitions between pages
+  google_generative_ai: ^0.2.2 # Google Generative AI package for AI features
 
 
   # The following adds the Cupertino Icons font to your application.
