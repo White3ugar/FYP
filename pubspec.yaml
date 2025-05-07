@@ -37,7 +37,8 @@ dependencies:
   intl: ^0.18.1 # Date and time formatting
   smooth_page_indicator: ^1.1.0 # Page indicator for smooth transitions between pages
   google_generative_ai: ^0.2.2 # Google Generative AI package for AI features
-
+  http: ^1.1.0 # HTTP package for making network requests
+  googleapis_auth: ^1.4.0 # Google APIs authentication package
 
   # The following adds the Cupertino Icons font to your application.
   # Use with the CupertinoIcons class for iOS style icons.
@@ -104,6 +105,9 @@ flutter:
   - assets/icon/salary.png
   - assets/icon/invest.png 
   - assets/icon/deposit.png
+
+  # Credentials for Dialogflow API
+  - assets/credential/fyp1-f09f5-276ff280519c.json
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/assets-and-images/#resolution-aware
