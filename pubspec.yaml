@@ -36,9 +36,10 @@ dependencies:
   fl_chart: ^0.64.0 # Charting library for data visualization
   intl: ^0.18.1 # Date and time formatting
   smooth_page_indicator: ^1.1.0 # Page indicator for smooth transitions between pages
-  google_generative_ai: ^0.2.2 # Google Generative AI package for AI features
+  google_generative_ai: ^0.4.7 # Google Generative AI package for AI features
   http: ^1.1.0 # HTTP package for making network requests
   googleapis_auth: ^1.4.0 # Google APIs authentication package
+  firebase_vertexai: 0.2.3+1
 
   # The following adds the Cupertino Icons font to your application.
   # Use with the CupertinoIcons class for iOS style icons.
@@ -46,6 +47,7 @@ dependencies:
   firebase_core: ^3.4.0 # Firebase Core package for initializing Firebase
   firebase_auth: any  # Firebase Authentication package for user authentication
   cloud_firestore: any  # Cloud Firestore package for database storage
+  
 
 
 dev_dependencies:

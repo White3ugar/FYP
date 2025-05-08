@@ -3,8 +3,62 @@ import 'package:google_generative_ai/google_generative_ai.dart';
 import 'package:logger/logger.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+// import 'package:http/http.dart' as http;
+import 'package:googleapis_auth/auth_io.dart';
+import 'package:flutter/services.dart';
+import 'dart:convert';
 
 const String _apiKey = String.fromEnvironment('GEMINI_API_KEY');
+
+class DialogflowService {
+  final String projectId = 'fyp1-f09f5';
+  final String languageCode = 'en'; // or your preferred language
+    final Logger logger = Logger();
+
+  Future<Map<String, dynamic>> detectIntent(String query) async {
+    // Log the incoming query
+    logger.i("Sending query to Dialogflow: $query");
+
+    // Load service account credentials
+    final serviceAccountJson = await rootBundle.loadString('assets/credential/fyp1-f09f5-276ff280519c.json');
+    final credentials = ServiceAccountCredentials.fromJson(serviceAccountJson);
+
+    // Authorize using scopes required by Dialogflow
+    final client = await clientViaServiceAccount(
+      credentials,
+      ['https://www.googleapis.com/auth/cloud-platform'],
+    );
+
+    // Generate a unique session ID
+    final sessionId = DateTime.now().millisecondsSinceEpoch.toString();
+
+    final url = Uri.parse(
+      'https://dialogflow.googleapis.com/v2/projects/$projectId/agent/sessions/$sessionId:detectIntent',
+    );
+
+    final response = await client.post(
+      url,
+      headers: {'Content-Type': 'application/json; charset=utf-8'},
+      body: jsonEncode({
+        'queryInput': {
+          'text': {
+            'text': query,
+            'languageCode': languageCode,
+          }
+        }
+      }),
+    );
+
+    if (response.statusCode == 200) {
+      final json = jsonDecode(response.body);
+      logger.i("Dialogflow response: ${json['queryResult']['parameters']}");
+      return json['queryResult']['parameters'] ?? {};
+    } else {
+      logger.e("Dialogflow request failed: ${response.body}");
+      throw Exception('Dialogflow request failed: ${response.body}');
+    }
+  }
+}
 
 class AIPage extends StatefulWidget {
   const AIPage({super.key});
@@ -21,6 +75,9 @@ class _AIPageState extends State<AIPage> {
   final ScrollController _scrollController = ScrollController();
   bool _loading = false;
   final List<({Image? image, String? text, bool fromUser})> _generatedContent = [];
+
+  // Initialize dialogflowService
+  final DialogflowService dialogflowService = DialogflowService(); 
 
   @override
   void initState() {
@@ -41,13 +98,12 @@ class _AIPageState extends State<AIPage> {
     return user?.uid;
   }
 
-  String getCurrentMonthName() {
-    final now = DateTime.now();
-    const monthNames = [
+  String getMonthAbbreviation(DateTime date) {
+    const List<String> monthAbbreviations = [
       'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
       'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
     ];
-    return monthNames[now.month - 1];
+    return monthAbbreviations[date.month - 1];
   }
 
   void _scrollToBottom() {
@@ -60,49 +116,79 @@ class _AIPageState extends State<AIPage> {
     );
   }
 
-  Future<String> fetchAndSummarizeExpenses(String userID, String month) async {
+  Future<String> fetchAndSummarizeExpenses(String userID, DateTime startDate, DateTime endDate) async {
     final FirebaseFirestore firestore = FirebaseFirestore.instance;
     final Map<String, double> categoryTotals = {};
     double total = 0.0;
 
-    final monthDocRef = firestore.collection('expenses').doc(userID).collection('Months').doc(month);
+    // Generate list of months between startDate and endDate
+    DateTime monthCursor = DateTime(startDate.year, startDate.month);
+    final DateTime endMonth = DateTime(endDate.year, endDate.month);
 
-    final monthSnapshot = await monthDocRef.get();
-    if (!monthSnapshot.exists) {
-      logger.w("No month document found for: $month");
-      return 'No expense data found for $month.';
-    }
+    while (!monthCursor.isAfter(endMonth)) {
+      final String monthName = getMonthAbbreviation(monthCursor);
+      final monthDocRef = firestore.collection('expenses').doc(userID).collection('Months').doc(monthName);
+      logger.i("Fetching data for userID: $userID, month: $monthName");
 
-    final availableDates = List<String>.from(monthSnapshot.data()?['availableDates'] ?? []);
-    logger.i("Available dates for $month: $availableDates");
-
-    for (String date in availableDates) {
-      final dayCollectionRef = monthDocRef.collection(date);
-      final dayDocs = await dayCollectionRef.get();
-
-      if (dayDocs.docs.isEmpty) {
-        logger.w("No expense documents found for date: $date");
+      final monthSnapshot = await monthDocRef.get();
+      if (!monthSnapshot.exists) {
+        logger.w("No data found for month: $monthName");
+        monthCursor = DateTime(monthCursor.year, monthCursor.month + 1);
+        continue;
       }
 
-      for (var doc in dayDocs.docs) {
-        final data = doc.data();
-        final String category = data['category'] ?? 'Uncategorized';
-        final double amount = (data['amount'] as num?)?.toDouble() ?? 0.0;
+      final availableDates = List<String>.from(monthSnapshot.data()?['availableDates'] ?? []);
+      logger.i("Available dates in $monthName: $availableDates");
 
-        logger.i("Fetched record - Date: $date, Category: $category, Amount: RM${amount.toStringAsFixed(2)}");
+      for (String dateStr in availableDates) {
+        final parts = dateStr.split('-');
+        if (parts.length != 3) continue;
 
-        categoryTotals[category] = (categoryTotals[category] ?? 0.0) + amount;
-        total += amount;
+        final parsedDate = DateTime(
+          int.parse(parts[2]),
+          int.parse(parts[1]),
+          int.parse(parts[0]),
+        );
+
+        if (parsedDate.isAfter(startDate.subtract(const Duration(days: 1))) &&
+            parsedDate.isBefore(endDate.add(const Duration(days: 1)))) {
+          logger.i("Processing date: $dateStr");
+          final dayCollectionRef = monthDocRef.collection(dateStr);
+          final dayDocs = await dayCollectionRef.get();
+
+          if (dayDocs.docs.isEmpty) {
+            logger.w("No documents found for date: $dateStr");
+          }
+
+          for (var doc in dayDocs.docs) {
+            final data = doc.data();
+            final String category = data['category'] ?? 'Uncategorized';
+            final double amount = (data['amount'] as num?)?.toDouble() ?? 0.0;
+
+            logger.i("Fetched record - Date: $dateStr, Category: $category, Amount: RM${amount.toStringAsFixed(2)}");
+
+            categoryTotals[category] = (categoryTotals[category] ?? 0.0) + amount;
+            total += amount;
+          }
+        }
       }
+
+      // Move to next month
+      monthCursor = DateTime(monthCursor.year, monthCursor.month + 1);
     }
 
-    final buffer = StringBuffer('Expense summary for $month:\n');
+    if (categoryTotals.isEmpty) {
+      return 'No expense data found for the given period.';
+    }
+
+    final buffer = StringBuffer('Expense summary for the period from $startDate to $endDate:\n');
     categoryTotals.forEach((category, amt) {
       buffer.writeln('- $category: RM${amt.toStringAsFixed(2)}');
     });
     buffer.writeln('Total: RM${total.toStringAsFixed(2)}');
     return buffer.toString();
   }
+
 
   Future<void> _sendMessage() async {
     if (_apiKey.isEmpty) {
@@ -124,29 +210,74 @@ class _AIPageState extends State<AIPage> {
     _scrollToBottom();
 
     try {
-      String finalPrompt = userPrompt;
-      
-      // Explicitly instruct to avoid markdown formatting
-      finalPrompt = "Please respond without using any Markdown formatting such as **bold**, *italic*, or any other special characters or symbols that are not part of the plain text. The response should only contain regular text without any formatting.";
+      logger.i("User prompt: $userPrompt");
 
-      // Detect intent for budget recommendation
-      if (userPrompt.toLowerCase().contains("budget recommendation")) {
+      String finalPrompt = userPrompt;
+
+      // Fetching the response from Dialogflow
+      final dialogflowResponse = await dialogflowService.detectIntent(userPrompt);
+
+      // Extracting parameters
+      final date = dialogflowResponse['date'] ?? '';
+      final datePeriod = dialogflowResponse['date-period'] ?? {};
+
+      DateTime? startDate;  // Nullable DateTime
+      DateTime? endDate;    // Nullable DateTime
+
+      // Check if date-period is present and use that for range (e.g., this month)
+      if (datePeriod.isNotEmpty) {
+        final startDateStr = datePeriod['startDate'];
+        final endDateStr = datePeriod['endDate'];
+
+        startDate = DateTime.parse(startDateStr);
+        endDate = DateTime.parse(endDateStr);
+        
+        finalPrompt = "$finalPrompt from ${startDate.toLocal()} to ${endDate.toLocal()}";
+      }
+      // Check if date is provided for a specific date (e.g., yesterday)
+      else if (date.isNotEmpty) {
+        final specificDate = DateTime.parse(date); // Date for a specific day
+        startDate = specificDate;
+        endDate = specificDate;
+
+        finalPrompt = "$finalPrompt for ${startDate.toLocal()}";
+      }
+
+      // Fetching expenses based on the dynamic startDate and endDate, then set the finalPrompt to expense summary + userPrompt
+      if (startDate != null && endDate != null) {
         try {
-          finalPrompt = await _buildBudgetRecommendationPrompt(userPrompt);
+          final uid = getCurrentUserID();
+          if (uid == null) throw Exception("User not logged in.");
+
+          final summary = await fetchAndSummarizeExpenses(uid, startDate, endDate);
+
+          if (summary.isEmpty || summary.contains('No expense data')) {
+            _showError("No expense data available for the selected period.");
+            setState(() => _loading = false);
+            return;
+          }
+
+          finalPrompt = "$summary\n\n$userPrompt";  // <-- This lets Gemini infer intent
+
         } catch (e) {
           _showError(e.toString());
           setState(() => _loading = false);
           return;
         }
-      }
+}
 
       // Add length instruction if not already present
       if (!finalPrompt.toLowerCase().contains("short") &&
           !finalPrompt.toLowerCase().contains("concise") &&
           !finalPrompt.toLowerCase().contains("limit")) {
-        finalPrompt = "Please reply concisely in under 20 sentences.\n\n$finalPrompt";
+        finalPrompt =
+          "Please reply in a friendly and energetic tone. "
+          "Start directly with the answer—do not use phrases like 'Based on...'. "
+          "If giving an expense review or budget recommendation, include specific values for each category. "
+          "Do not include the '*' symbol anywhere in the response. "
+          "Add a bit of elaboration, but keep it under 12 sentences.\n\n"
+          "$finalPrompt";
       }
-
       final response = await _chat.sendMessage(Content.text(finalPrompt));
       final String? text = response.text;
 
@@ -161,25 +292,10 @@ class _AIPageState extends State<AIPage> {
         _scrollToBottom();
       }
     } catch (e) {
+      logger.e("Error while sending message: $e");
       _showError(e.toString());
       setState(() => _loading = false);
     }
-  }
-
-  Future<String> _buildBudgetRecommendationPrompt(String userPrompt) async {
-    final uid = getCurrentUserID();
-    final month = getCurrentMonthName();
-    
-    if (uid == null) {
-      throw Exception("User not logged in.");
-    }
-
-    final expenseSummary = await fetchAndSummarizeExpenses(uid, month);
-    if (expenseSummary.isEmpty) {
-      throw Exception("No expense data available for the current month.");
-    }
-
-    return "$expenseSummary\n\nBased on this breakdown, please provide a budget recommendation for each category individually, and suggest how much I should allocate to each one next month.";
   }
 
   void _showError(String message) {

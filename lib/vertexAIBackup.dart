@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:firebase_vertexai/firebase_vertexai.dart';
 import 'package:logger/logger.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -69,8 +68,8 @@ class AIPage extends StatefulWidget {
 
 class _AIPageState extends State<AIPage> {
   final logger = Logger();
-  late final GenerativeModel _model;
-  late final ChatSession _chat;
+
+  final String _projectId = 'fyp1-f09f5'; 
   final TextEditingController _textController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
   bool _loading = false;
@@ -82,20 +81,11 @@ class _AIPageState extends State<AIPage> {
   @override
   void initState() {
     super.initState();
-
-    _model = FirebaseVertexAI.instance.generativeModel(
-      model: 'gemini-2.0-flash',
-      systemInstruction: Content.text(
-        "You are a friendly and energetic financial assistant named Sparx. If user asks something not related to finance, "
-        "politely inform them that you are not able to assist with that. "
-        "Provide concise, clear, and engaging responses. "
-        "Avoid using the '*' symbol. "
-        "Start directly with the answer—do not use phrases like 'Based on...'. "
-        "Include specific values for each expense category when giving reviews or recommendations. "
-        "Keep responses under 12 sentences."
-      ),
-    );
-    _chat = _model.startChat();
+    if (_apiKey.isNotEmpty) {
+      logger.i("Gemini API Key is set. Features will be enabled.");
+    } else {
+      logger.i("API Key is missing. Gemini features will be disabled.");
+    }
   }
 
   String? getCurrentUserID() {
@@ -194,7 +184,6 @@ class _AIPageState extends State<AIPage> {
     return buffer.toString();
   }
 
-
   Future<void> _sendMessage() async {
     if (_textController.text.isEmpty) return;
 
@@ -208,58 +197,49 @@ class _AIPageState extends State<AIPage> {
     _scrollToBottom();
 
     try {
-      logger.i("User prompt: $userPrompt");
+      // Load service account credentials
+      final serviceAccountJson = await rootBundle.loadString('assets/credential/fyp1-f09f5-e4debf32889d.json');
+      final credentials = ServiceAccountCredentials.fromJson(serviceAccountJson);
 
-      String finalPrompt = userPrompt;
-      final dialogflowResponse = await dialogflowService.detectIntent(userPrompt);
+      // Authorize using scopes required by Vertex AI
+      final client = await clientViaServiceAccount(
+        credentials,
+        ['https://www.googleapis.com/auth/cloud-platform'],
+      );
 
-      final date = dialogflowResponse['date'] ?? '';
-      final datePeriod = dialogflowResponse['date-period'] ?? {};
+      // Setup the API endpoint for Vertex AI
+      final String endpoint =
+          'https://us-central1-aiplatform.googleapis.com/v1/projects/$_projectId/locations/us-central1/predict:predict';
 
-      DateTime? startDate;
-      DateTime? endDate;
+      // Define the request body (you can adjust the input format for your needs)
+      final body = jsonEncode({
+        'instances': [
+          {'content': userPrompt}  // Modify if Vertex AI requires specific input format
+        ]
+      });
 
-      if (datePeriod.isNotEmpty) {
-        final startDateStr = datePeriod['startDate'];
-        final endDateStr = datePeriod['endDate'];
-        startDate = DateTime.parse(startDateStr);
-        endDate = DateTime.parse(endDateStr);
-        finalPrompt = "$finalPrompt from ${startDate.toLocal()} to ${endDate.toLocal()}";
-      } else if (date.isNotEmpty) {
-        final specificDate = DateTime.parse(date);
-        startDate = specificDate;
-        endDate = specificDate;
-        finalPrompt = "$finalPrompt for ${startDate.toLocal()}";
-      }
+      // Send the request to Vertex AI
+      final response = await client.post(
+        Uri.parse(endpoint),
+        headers: {'Content-Type': 'application/json'},
+        body: body,
+      );
 
-      if (startDate != null && endDate != null) {
-        final uid = getCurrentUserID();
-        if (uid == null) throw Exception("User not logged in.");
+      if (response.statusCode == 200) {
+        final jsonResponse = jsonDecode(response.body);
 
-        final summary = await fetchAndSummarizeExpenses(uid, startDate, endDate);
+        // Log and process the response from Vertex AI
+        logger.i("Vertex AI response: $jsonResponse");
 
-        if (summary.isEmpty || summary.contains('No expense data')) {
-          _showError("No expense data available for the selected period.");
-          setState(() => _loading = false);
-          return;
-        }
-
-        finalPrompt = "$summary\n\n$userPrompt";
-      }
-
-      logger.i("Final prompt: $finalPrompt");
-      final response = await _chat.sendMessage(Content.text(finalPrompt));
-      final String? text = response.text;
-
-      if (text == null) {
-        _showError('No response from Gemini model.');
-        return;
-      } else {
+        // If there’s a response from the model, process and display the result
+        final String text = jsonResponse['predictions'][0] ?? "No response from AI model";
         setState(() {
           _generatedContent.add((image: null, text: text, fromUser: false));
           _loading = false;
         });
         _scrollToBottom();
+      } else {
+        throw Exception('Vertex AI request failed: ${response.body}');
       }
     } catch (e) {
       logger.e("Error while sending message: $e");
