@@ -403,99 +403,175 @@ class _ExpenseRecordPageState extends State<ExpenseRecordPage> {
     double screenWidth = MediaQuery.of(context).size.width;
     double iconSize = screenWidth * 0.08;
 
-    return Scaffold(
-      appBar: AppBar(
-        centerTitle: true,
-        title: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            GestureDetector(
-              onTap: () {
-                setState(() {
-                  isIncomeSelected = false;
-                });
-              },
-              child: Image.asset(
-                "assets/icon/spending.png",
-                width: 40,
-                height: 40,
-                fit: BoxFit.contain,
-              ),
+    return PopScope(
+      canPop: false, // Prevent default pop behavior
+      onPopInvoked: (didPop) {
+        if (!didPop) {
+          Navigator.pushAndRemoveUntil(
+            context,
+            PageRouteBuilder(
+              pageBuilder: (context, animation, secondaryAnimation) => const HomePage(),
+              transitionDuration: Duration.zero,
+              reverseTransitionDuration: Duration.zero,
             ),
-            const SizedBox(width: 8),
-            GestureDetector(
-              onTap: () {
-                setState(() {
-                  isIncomeSelected = true;
-                });
-              },
-              child: Image.asset(
-                "assets/icon/income.png",
-                width: 40,
-                height: 40,
-                fit: BoxFit.contain,
+            (route) => false,
+          );
+        }
+      },
+      child: Scaffold(
+        backgroundColor: const Color.fromARGB(255, 239, 179, 236),
+        appBar: AppBar(
+          backgroundColor: const Color.fromARGB(255, 239, 179, 236),
+          scrolledUnderElevation: 0,
+          centerTitle: true,
+          title: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              GestureDetector(
+                onTap: () {
+                  setState(() {
+                    isIncomeSelected = false;
+                  });
+                },
+                child: Image.asset(
+                  "assets/icon/spending.png",
+                  width: 40,
+                  height: 40,
+                  fit: BoxFit.contain,
+                  color: isIncomeSelected ? Colors.grey : null,
+                ),
               ),
-            ),
-          ],
-        ),
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () {
-            Navigator.pushAndRemoveUntil(
-              context,
-              PageRouteBuilder(
-                pageBuilder: (context, animation, secondaryAnimation) => const HomePage(),
-                transitionDuration: Duration.zero,
-                reverseTransitionDuration: Duration.zero,
+              const SizedBox(width: 8),
+              GestureDetector(
+                onTap: () {
+                  setState(() {
+                    isIncomeSelected = true;
+                  });
+                },
+                child: Image.asset(
+                  "assets/icon/income.png",
+                  width: 40,
+                  height: 40,
+                  fit: BoxFit.contain,
+                  color: isIncomeSelected ? null : Colors.grey,
+                ),
               ),
-              (route) => false,
-            );
-          },
+            ],
+          ),
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back),
+            onPressed: () {
+              Navigator.pushAndRemoveUntil(
+                context,
+                PageRouteBuilder(
+                  pageBuilder: (context, animation, secondaryAnimation) => const HomePage(),
+                  transitionDuration: Duration.zero,
+                  reverseTransitionDuration: Duration.zero,
+                ),
+                (route) => false,
+              );
+            },
+          ),
         ),
+        body: isIncomeSelected ? _incomeInterface() : _spendingInterface(),
+        bottomNavigationBar: _buildBottomAppBar(context, iconSize),
       ),
-      body: isIncomeSelected ? _incomeInterface() : _spendingInterface(), // Dynamically changes interface
-      bottomNavigationBar: _buildBottomAppBar(context, iconSize),
     );
   }
 
   // Build the category interface for both income and expense
   Widget _categoryInterface(String transactionType, List<Map<String, String>> categories, Function recordFunction) {
-    return SingleChildScrollView(
-      child: Column(
-        children: [
-          const SizedBox(height: 10),
-          _buildCategorySelection(categories),
-          if(transactionType == "Expense") _buildBudgetMultiSelect(), // Add space between category and budget dropdown for expenses 
-          _buildAmountInputField("Amount", amountController, TextInputType.number),
-          _buildRepeatDropdown(),
-          _buildDatePicker(context),
-          _buildDescriptionInputField("Description", descriptionController, TextInputType.text),
-          const SizedBox(height: 10),
-          isSubmitting
-            ? const CircularProgressIndicator()
-            : ElevatedButton(
-                onPressed: () async {
-                  if (!mounted) return;
-                  setState(() {
-                    isSubmitting = true;
-                  });
+    final screenHeight = MediaQuery.of(context).size.height;
+    final categorySelectionSectionHeight = screenHeight * 0.21;
 
-                  await recordFunction(); // Wait for the async operation
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        return SingleChildScrollView(
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              minHeight: constraints.maxHeight,
+            ),
+            child: IntrinsicHeight(
+              child: Column(
+                children: [
+                  // Top pink section
+                  Container(
+                    width: double.infinity,
+                    height: categorySelectionSectionHeight,
+                    color: const Color.fromARGB(255, 239, 179, 236),
+                    padding: EdgeInsets.symmetric(vertical: screenHeight * 0.007),
+                    child: _buildCategorySelection(categories),
+                  ),
 
-                  if (!mounted) return;
-                  setState(() {
-                    isSubmitting = false;
-                  });
-                },
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color.fromARGB(255, 165, 35, 226),
-                  padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 10),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
-                ),
-                child: const Text("Confirm", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                  // Bottom gradient section
+                  Expanded(
+                    child: Container(
+                      width: double.infinity,
+                      decoration: const BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                          colors: [
+                            Color.fromARGB(255, 241, 109, 231),
+                            Colors.white,
+                          ],
+                        ),
+                        borderRadius: BorderRadius.only(
+                          topLeft: Radius.circular(35),
+                          topRight: Radius.circular(35),
+                        ),
+                      ),
+                      padding: EdgeInsets.symmetric(
+                        vertical: screenHeight * 0.02,
+                        horizontal: screenHeight * 0.03,
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          if (transactionType == "Expense") _buildBudgetMultiSelect(),
+                          _buildAmountInputField("Amount", amountController, TextInputType.number),
+                          _buildRepeatDropdown(),
+                          _buildDatePicker(context),
+                          _buildDescriptionInputField("Description", descriptionController, TextInputType.text),
+                          const SizedBox(height: 10),
+                          isSubmitting
+                              ? const Center(child: CircularProgressIndicator())
+                              : Center(
+                                  child: ElevatedButton(
+                                    onPressed: () async {
+                                      if (!mounted) return;
+                                      setState(() {
+                                        isSubmitting = true;
+                                      });
+
+                                      await recordFunction();
+
+                                      if (!mounted) return;
+                                      setState(() {
+                                        isSubmitting = false;
+                                      });
+                                    },
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: const Color.fromARGB(255, 165, 35, 226),
+                                      padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 10),
+                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
+                                    ),
+                                    child: const Text(
+                                      "Confirm",
+                                      style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                                    ),
+                                  ),
+                                ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
               ),
-        ],
-      ),
+            ),
+          ),
+        );
+      },
     );
   }
 
@@ -552,38 +628,31 @@ class _ExpenseRecordPageState extends State<ExpenseRecordPage> {
             "label": cat['name'] ?? '',
           };
         }).toList();
-
         return _categoryInterface(transactionType, categories, () => _recordTransaction(true)  /* false for income */); 
       },
     );
   }
 
-  // Build the category selection grid
   Widget _buildCategorySelection(List<Map<String, String>> categories) {
-    final double categorySectionHeight = MediaQuery.of(context).size.height * 0.20; // 27% of screen height
-
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: SizedBox(
-        height: categorySectionHeight, // Limit height to 27% of screen
-        child: GridView.builder(
-          shrinkWrap: true,
-          physics: const AlwaysScrollableScrollPhysics(), // Enable scrolling inside
-          itemCount: categories.length,
-          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: 3,
-            crossAxisSpacing: 10,
-            mainAxisSpacing: 10,
-            childAspectRatio: 2.5,
-          ),
-          itemBuilder: (context, index) {
-            return _buildCategoryButton(
-              categories[index]["icon"]!,
-              categories[index]["label"]!,
-              selectedCategory == categories[index]["label"],
-            );
-          },
+    return SizedBox(
+      child: GridView.builder(
+        shrinkWrap: true,
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        itemCount: categories.length,
+        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: 3,
+          crossAxisSpacing: 10,
+          mainAxisSpacing: 10,
+          childAspectRatio: 2.5,
         ),
+        itemBuilder: (context, index) {
+          return _buildCategoryButton(
+            categories[index]["icon"]!,
+            categories[index]["label"]!,
+            selectedCategory == categories[index]["label"],
+          );
+        },
       ),
     );
   }
@@ -592,7 +661,7 @@ class _ExpenseRecordPageState extends State<ExpenseRecordPage> {
   Widget _buildCategoryButton(String iconPath, String label, bool isSelected) {
     return ElevatedButton(
       style: ElevatedButton.styleFrom(
-        backgroundColor: isSelected ? const Color.fromARGB(255, 203, 111, 220) : Colors.white, // Purple when selected, white otherwise
+        backgroundColor: isSelected ? const Color.fromARGB(255, 241, 109, 231) : Colors.white, // Purple when selected, white otherwise for the button background
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(30),
           side: const BorderSide(color: Color.fromARGB(255, 165, 35, 226), width: 2), // Purple border
@@ -613,7 +682,7 @@ class _ExpenseRecordPageState extends State<ExpenseRecordPage> {
             Text(
               label,
               style: TextStyle(
-                color: isSelected ? Colors.white : const Color.fromARGB(255, 165, 35, 226), // White text when selected, purple otherwise
+                color: isSelected ? Colors.white : const Color.fromARGB(255, 165, 35, 226), // White text when selected, purple otherwise for the text color
                 fontWeight: FontWeight.bold,
               ),
             ),
@@ -631,7 +700,7 @@ class _ExpenseRecordPageState extends State<ExpenseRecordPage> {
     double dropdownHeight = screenHeight * 0.06;
 
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+      padding: const EdgeInsets.symmetric(vertical: 8),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
@@ -729,36 +798,57 @@ class _ExpenseRecordPageState extends State<ExpenseRecordPage> {
 
   // Build the input field for amount
   Widget _buildAmountInputField(String label, TextEditingController controller, TextInputType keyboardType) {
-    double screenWidth = MediaQuery.of(context).size.width;
     double screenHeight = MediaQuery.of(context).size.height;
-    double inputWidth = screenWidth * 0.63;
-    double inputHeight = screenHeight * 0.04; // 4% of screen height
+    double inputHeight = screenHeight * 0.04;
+    double screenWidth = MediaQuery.of(context).size.width;
+    double fieldWidth = screenWidth * 0.4;
 
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+      padding: const EdgeInsets.symmetric(vertical: 8),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           Text(
             label,
-            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Color.fromARGB(255, 165, 35, 226))),
+            style: const TextStyle(
+              fontWeight: FontWeight.bold,
+              fontSize: 16,
+              color: Color.fromARGB(255, 165, 35, 226),
+            ),
+          ),
           const SizedBox(width: 20),
           Expanded(
             child: Align(
               alignment: Alignment.centerRight,
               child: SizedBox(
-                width: inputWidth,
+                width: fieldWidth,
                 child: TextField(
                   controller: controller,
                   keyboardType: keyboardType,
+                  cursorColor: const Color.fromARGB(255, 165, 35, 226), // Set cursor color
                   decoration: InputDecoration(
                     filled: true,
                     fillColor: Colors.white,
                     isDense: true,
-                    contentPadding: EdgeInsets.symmetric(vertical: inputHeight * 0.25, horizontal: 16), // Adjust internal padding
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(20)),
+                    contentPadding: EdgeInsets.symmetric(
+                      vertical: inputHeight * 0.25,
+                      horizontal: 16,
+                    ),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(20),
+                      borderSide: const BorderSide(
+                        color: Color.fromARGB(255, 165, 35, 226), // Set focus border color
+                        width: 2,
+                      ),
+                    ),
                   ),
-                  style: TextStyle(fontSize: inputHeight * 0.6), // Adjust text size if needed
+                  style: TextStyle(
+                    fontSize: inputHeight * 0.6,
+                    color: const Color.fromARGB(255, 165, 35, 226),
+                  ),
                 ),
               ),
             ),
@@ -776,7 +866,7 @@ class _ExpenseRecordPageState extends State<ExpenseRecordPage> {
     double dropdownHeight = screenHeight * 0.06;
 
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+      padding: const EdgeInsets.symmetric(vertical: 8),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
@@ -851,7 +941,7 @@ class _ExpenseRecordPageState extends State<ExpenseRecordPage> {
     double datePickerWidth = screenWidth * 0.63;
 
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+      padding: const EdgeInsets.symmetric(vertical: 8),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
@@ -889,7 +979,10 @@ class _ExpenseRecordPageState extends State<ExpenseRecordPage> {
                       children: [
                         Text(
                           "${selectedDate.day} ${_getMonthAbbreviation(selectedDate.month)} ${selectedDate.year}",
-                          style: const TextStyle(fontSize: 16),
+                          style: const TextStyle(
+                            fontSize: 16,
+                            color: Color.fromARGB(255, 165, 35, 226),
+                          ),
                         ),
                         const Icon(Icons.calendar_today, color: Colors.purple),
                       ],
@@ -905,33 +998,43 @@ class _ExpenseRecordPageState extends State<ExpenseRecordPage> {
   }
 
   Widget _buildDescriptionInputField(String label, TextEditingController controller, TextInputType keyboardType) {
-    double screenWidth = MediaQuery.of(context).size.width;
-    double screenHeight = MediaQuery.of(context).size.height;
-    double inputWidth = screenWidth * 1; // 100% of screen width
-    double inputHeight = screenHeight * 0.3; // 30% of screen height
-
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+      padding: const EdgeInsets.symmetric(vertical: 8),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(label, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16,color: Color.fromARGB(255, 165, 35, 226))),
-          const SizedBox(height: 15), // Increased space between label and input field
-          Align(
-            alignment: Alignment.centerLeft,
-            child: SizedBox(
-              width: inputWidth,
-              child: TextField(
-                controller: controller,
-                keyboardType: keyboardType,
-                maxLines: null, // Allow TextField to expand vertically
-                minLines: (inputHeight / 80).round(), // Dynamically set minLines based on height
-                decoration: InputDecoration(
-                  filled: true,
-                  fillColor: Colors.white,
-                  isDense: true,
-                  contentPadding: const EdgeInsets.symmetric(vertical: 10, horizontal: 16),
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(20)),
+          Text(
+            label,
+            style: const TextStyle(
+              fontWeight: FontWeight.bold,
+              fontSize: 16,
+              color: Color.fromARGB(255, 165, 35, 226),
+            ),
+          ),
+          const SizedBox(height: 15),
+          TextField(
+            controller: controller,
+            keyboardType: keyboardType,
+            cursorColor: const Color.fromARGB(255, 165, 35, 226), // Cursor color
+            maxLines: null,
+            minLines: 3,
+            style: const TextStyle( 
+              color: Color.fromARGB(255, 165, 35, 226),
+              fontSize: 16,
+            ),
+            decoration: InputDecoration(
+              filled: true,
+              fillColor: Colors.white,
+              isDense: true,
+              contentPadding: const EdgeInsets.symmetric(vertical: 10, horizontal: 16),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(20),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(20),
+                borderSide: const BorderSide(
+                  color: Color.fromARGB(255, 165, 35, 226), // Focus border color
+                  width: 2,
                 ),
               ),
             ),
@@ -952,6 +1055,8 @@ class _ExpenseRecordPageState extends State<ExpenseRecordPage> {
 
   Widget _buildBottomAppBar(BuildContext context, double iconSize) {
     double screenWidth = MediaQuery.of(context).size.width;
+    double screenHeight = MediaQuery.of(context).size.height;
+    double bottomAppBarHeight = screenHeight * 0.115; // 11.5% of screen height
     double iconSpacing = screenWidth * 0.14;
 
     return Container(
@@ -967,17 +1072,17 @@ class _ExpenseRecordPageState extends State<ExpenseRecordPage> {
         ],
       ),
       child: BottomAppBar(
-        height: 100,
+        height: bottomAppBarHeight,
         elevation: 0,
         color: Colors.transparent,
         shape: const CircularNotchedRectangle(),
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 0, vertical: 10),
+          padding: const EdgeInsets.symmetric(vertical: 10),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
-              _buildNavIconWithCaption( context, "assets/icon/record-book.png","Record",iconSize,const ExpenseRecordPage(),fontWeight: FontWeight.w900),
+              _buildNavIconWithCaption(context, "assets/icon/record-book.png","Record",iconSize,const ExpenseRecordPage(), textColor: Colors.deepPurple),
               SizedBox(width: iconSpacing),
               _buildNavIconWithCaption(context, "assets/icon/budget.png", "Budget", iconSize, const BudgetPage()),
               SizedBox(width: iconSpacing),
@@ -997,8 +1102,8 @@ class _ExpenseRecordPageState extends State<ExpenseRecordPage> {
     String caption,
     double size,
     Widget page, {
-      FontWeight fontWeight = FontWeight.w400, // 👈 customizable font weight
-    }) {
+    Color textColor = Colors.grey
+  }) {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -1027,8 +1132,7 @@ class _ExpenseRecordPageState extends State<ExpenseRecordPage> {
           caption,
           style: TextStyle(
             fontSize: 13,
-            color: const Color.fromARGB(255, 165, 35, 226),
-            fontWeight: fontWeight, // 👈 apply custom font weight
+            color: textColor,
           ),
         ),
       ],

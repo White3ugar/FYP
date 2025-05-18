@@ -637,7 +637,7 @@ class _DataVisualPageState extends State<DataVisualPage> {
               SizedBox(width: iconSpacing),
               _buildNavIconWithCaption(context, "assets/icon/budget.png", "Budget", iconSize, const BudgetPage()),
               SizedBox(width: iconSpacing),
-              _buildNavIconWithCaption(context, "assets/icon/dataVisual.png", "Graphs", iconSize, const DataVisualPage(), fontWeight: FontWeight.w900),
+              _buildNavIconWithCaption(context, "assets/icon/dataVisual.png", "Graphs", iconSize, const DataVisualPage(), textColor: Colors.deepPurple),
               SizedBox(width: iconSpacing),
               _buildNavIconWithCaption(context, "assets/icon/chatbot.png", "AI", iconSize, const AIPage()),
             ],
@@ -653,7 +653,7 @@ class _DataVisualPageState extends State<DataVisualPage> {
     String caption,
     double size,
     Widget page, {
-    FontWeight fontWeight = FontWeight.w400,
+    Color textColor = Colors.grey
   }) {
     return Column(
       mainAxisSize: MainAxisSize.min,
@@ -683,8 +683,7 @@ class _DataVisualPageState extends State<DataVisualPage> {
           caption,
           style: TextStyle(
             fontSize: 13,
-            color: const Color.fromARGB(255, 165, 35, 226),
-            fontWeight: fontWeight,
+            color: textColor,
           ),
         ),
       ],
