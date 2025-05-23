@@ -3,6 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:logger/logger.dart';
 import 'package:fl_chart/fl_chart.dart';
+import 'package:intl/intl.dart';
 import 'ai_page.dart';
 import 'expenseRecord_page.dart';
 import 'budgeting_page.dart';
@@ -88,7 +89,7 @@ class _DataVisualPageState extends State<DataVisualPage> {
         final year = int.parse(dateParts[2]);
         final dataDate = DateTime(year, month, day);
 
-        // Calculate total amount for the date
+        // Calculate total amount for the current date(dateStr)
         final totalForDate = dataDocs.docs.fold(0.0, (total, doc) {
           final data = doc.data();
           return total + (data['amount'] ?? 0).toDouble();
@@ -251,6 +252,7 @@ class _DataVisualPageState extends State<DataVisualPage> {
     return colors[index % colors.length];
   }
 
+  // Function to build the Line Graph widget
   Widget _buildLineGraph() {
     double screenHeight = MediaQuery.of(context).size.height;
     double chartHeight = screenHeight * 0.25;
@@ -453,16 +455,35 @@ class _DataVisualPageState extends State<DataVisualPage> {
   }
 
   String _formatKey(String key) {
-    if (key.contains('W')) {
-      return key.split('-').last;
-    } else if (key.contains('-')) {
-      final parts = key.split('-');
-      if (parts.length == 3) {
-        return "${parts[0]}/${parts[1]}";
-      } else if (parts.length == 2) {
-        return "$parts[1]";
+    try {
+      if (key.contains('W')) {
+        // Weekly format: e.g. 2025-W16 → 14–20 Apr
+        final parts = key.split('-W');
+        final year = int.parse(parts[0]);
+        final week = int.parse(parts[1]);
+
+        final firstDay = _firstDateOfWeek(year, week);
+        final lastDay = firstDay.add(const Duration(days: 6));
+
+        final dayFormatter = DateFormat('d');
+        final monthFormatter = DateFormat('MMM');
+
+        return "${dayFormatter.format(firstDay)}–${dayFormatter.format(lastDay)} ${monthFormatter.format(lastDay)}";
+      } else if (key.contains('-')) {
+        final parts = key.split('-');
+        if (parts.length == 3) {
+          // Daily format: e.g. 14-04-2025 → 14/04
+          return "${parts[0]}/${parts[1]}";
+        } else if (parts.length == 2) {
+          // Monthly format: e.g. 2025-04 → Apr
+          final month = int.parse(parts[1]);
+          return DateFormat.MMM().format(DateTime(0, month));
+        }
       }
+    } catch (e) {
+      logger.e("Failed to format key: $key");
     }
+
     return key;
   }
 

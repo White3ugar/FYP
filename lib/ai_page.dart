@@ -239,12 +239,10 @@ class _AIPageState extends State<AIPage> {
         final summary = await fetchAndSummarizeExpenses(uid, startDate, endDate);
 
         if (summary.isEmpty || summary.contains('No expense data')) {
-          _showError("No expense data available for the selected period.");
-          setState(() => _loading = false);
-          return;
+          finalPrompt = "Explain in friendly: No record found in this date period.\n\n$userPrompt";
+        } else {
+          finalPrompt = "$summary\n\n$userPrompt";
         }
-
-        finalPrompt = "$summary\n\n$userPrompt";
       }
 
       logger.i("Final prompt: $finalPrompt");
@@ -278,7 +276,7 @@ class _AIPageState extends State<AIPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Gemini Chatbot'),
+        title: const Text('Chat with Sparx!'),
       ),
       body: Padding(
         padding: const EdgeInsets.all(8.0),
@@ -315,38 +313,31 @@ class _AIPageState extends State<AIPage> {
                         contentPadding: const EdgeInsets.all(15),
                         hintText: 'Enter a prompt...',
                         border: OutlineInputBorder(
-                          borderRadius: const BorderRadius.all(
-                            Radius.circular(14),
-                          ),
+                          borderRadius: const BorderRadius.all(Radius.circular(14)),
                           borderSide: BorderSide(
                             color: Theme.of(context).colorScheme.secondary,
                           ),
                         ),
                         focusedBorder: OutlineInputBorder(
-                          borderRadius: const BorderRadius.all(
-                            Radius.circular(14),
-                          ),
+                          borderRadius: const BorderRadius.all(Radius.circular(14)),
                           borderSide: BorderSide(
                             color: Theme.of(context).colorScheme.secondary,
                           ),
                         ),
                       ),
-                      onSubmitted: _apiKey.isNotEmpty ? (_) => _sendMessage() : null,
+                      onSubmitted: _apiKey.isNotEmpty && !_loading ? (_) => _sendMessage() : null,
                     ),
                   ),
                   const SizedBox.square(dimension: 15),
-                  if (!_loading)
-                    IconButton(
-                      onPressed: _apiKey.isNotEmpty ? _sendMessage : null,
-                      icon: Icon(
-                        Icons.send,
-                        color: Theme.of(context).colorScheme.primary,
-                      ),
-                    )
-                  else
-                    const CircularProgressIndicator(),
+                  IconButton(
+                    onPressed: _apiKey.isNotEmpty && !_loading ? _sendMessage : null,
+                    icon: Icon(
+                      Icons.send,
+                      color: _loading ? Colors.grey : const Color.fromARGB(255, 165, 35, 226),
+                    ),
+                  ),
                 ],
-              ),
+              )
             ),
           ],
         ),
@@ -355,6 +346,7 @@ class _AIPageState extends State<AIPage> {
   }
 }
 
+// MessageWidget is a simple widget to display messages in the chat (Chat bubble)
 class MessageWidget extends StatelessWidget {
   final String? text;
   final Image? image;
@@ -379,15 +371,21 @@ class MessageWidget extends StatelessWidget {
             margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
             decoration: BoxDecoration(
               color: isFromUser
-                  ? Theme.of(context).colorScheme.primaryContainer
-                  : Theme.of(context).colorScheme.surfaceVariant,
+                  ? const Color.fromARGB(255, 165, 35, 226)
+                  : const Color.fromARGB(255, 239, 179, 236),
               borderRadius: BorderRadius.circular(12),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 if (image != null) image!,
-                if (text != null) Text(text!),
+                if (text != null)
+                  Text(
+                    text!,
+                    style: TextStyle(
+                      color: isFromUser ? Colors.white : Colors.black,
+                    ),
+                  ),
               ],
             ),
           ),
