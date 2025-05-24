@@ -506,54 +506,17 @@ class _DataVisualPageState extends State<DataVisualPage> {
 
   @override
   Widget build(BuildContext context) {
-  double screenWidth = MediaQuery.of(context).size.width;
-  double iconSize = screenWidth * 0.08;
+    double screenWidth = MediaQuery.of(context).size.width;
+    double screenHeight = MediaQuery.of(context).size.height;
+    double iconSize = screenWidth * 0.08;
 
-  String chartTitle = "Category breakdown of current ${_selectedFilters.indexWhere((element) => element) == 0 ? 'day' : _selectedFilters.indexWhere((element) => element) == 1 ? 'week' : 'month'} ${isIncomeSelected ? 'income' : 'expense'}";
-  String lineChartTitle = "Trends in ${isIncomeSelected ? 'income' : 'expense'} for ${_selectedFilters.indexWhere((element) => element) == 0 ? 'day' : _selectedFilters.indexWhere((element) => element) == 1 ? 'week' : 'month'}";
+    String chartTitle = "Category breakdown of current ${_selectedFilters.indexWhere((element) => element) == 0 ? 'day' : _selectedFilters.indexWhere((element) => element) == 1 ? 'week' : 'month'} ${isIncomeSelected ? 'income' : 'expense'}";
+    String lineChartTitle = "Trends in ${isIncomeSelected ? 'income' : 'expense'} for ${_selectedFilters.indexWhere((element) => element) == 0 ? 'day' : _selectedFilters.indexWhere((element) => element) == 1 ? 'week' : 'month'}";
 
-  return Scaffold(
-    appBar: AppBar(
-      centerTitle: true,
-      title: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          GestureDetector(
-            onTap: () {
-              setState(() {
-                isIncomeSelected = false;
-                _fetchAndGroupData(); // Refresh data for expenses
-              });
-            },
-            child: Image.asset(
-              "assets/icon/spending.png",
-              width: 40,
-              height: 40,
-              fit: BoxFit.contain,
-              color: isIncomeSelected ? Colors.grey : null, // Dim when not selected
-            ),
-          ),
-          const SizedBox(width: 8),
-          GestureDetector(
-            onTap: () {
-              setState(() {
-                isIncomeSelected = true;
-                _fetchAndGroupData(); // Refresh data for incomes
-              });
-            },
-            child: Image.asset(
-              "assets/icon/income.png",
-              width: 40,
-              height: 40,
-              fit: BoxFit.contain,
-              color: isIncomeSelected ? null : Colors.grey, // Dim when not selected
-            ),
-          ),
-        ],
-      ),
-      leading: IconButton(
-        icon: const Icon(Icons.arrow_back),
-        onPressed: () {
+    return PopScope(
+      canPop: false, // Prevent default pop behavior
+      onPopInvoked: (didPop) {
+        if (!didPop) {
           Navigator.pushAndRemoveUntil(
             context,
             PageRouteBuilder(
@@ -563,69 +526,143 @@ class _DataVisualPageState extends State<DataVisualPage> {
             ),
             (route) => false,
           );
-        },
-      ),
-    ),
-    body: Column(
-      children: [
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-          child: ToggleButtons(
-            borderRadius: BorderRadius.circular(30),
-            borderColor: const Color.fromARGB(255, 165, 35, 226),
-            selectedBorderColor: const Color.fromARGB(255, 165, 35, 226),
-            selectedColor: Colors.white,
-            fillColor: const Color.fromARGB(255, 165, 35, 226),
-            color: const Color.fromARGB(255, 165, 35, 226),
-            textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-            constraints: const BoxConstraints(minHeight: 40, minWidth: 100),
-            isSelected: _selectedFilters,
-            onPressed: (int index) {
-              setState(() {
-                for (int i = 0; i < _selectedFilters.length; i++) {
-                  _selectedFilters[i] = i == index;
-                }
-                _fetchAndGroupData(); // Refresh data on filter change
-              });
+        }
+      },
+      child: Scaffold(
+        extendBodyBehindAppBar: true, // Let gradient go behind AppBar
+        appBar: AppBar(
+          backgroundColor: Colors.transparent, // Make AppBar transparent to show gradient
+          centerTitle: true,
+          title: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              GestureDetector(
+                onTap: () {
+                  setState(() {
+                    isIncomeSelected = false;
+                    _fetchAndGroupData(); // Refresh data for expenses
+                  });
+                },
+                child: Image.asset(
+                  "assets/icon/spending.png",
+                  width: 40,
+                  height: 40,
+                  fit: BoxFit.contain,
+                  color: isIncomeSelected ? Colors.grey : null, // Dim when not selected
+                ),
+              ),
+              const SizedBox(width: 8),
+              GestureDetector(
+                onTap: () {
+                  setState(() {
+                    isIncomeSelected = true;
+                    _fetchAndGroupData(); // Refresh data for incomes
+                  });
+                },
+                child: Image.asset(
+                  "assets/icon/income.png",
+                  width: 40,
+                  height: 40,
+                  fit: BoxFit.contain,
+                  color: isIncomeSelected ? null : Colors.grey, // Dim when not selected
+                ),
+              ),
+            ],
+          ),
+          leading: IconButton(
+            icon: const Icon(
+              Icons.arrow_back,
+              color: Color.fromARGB(255, 165, 35, 226),
+            ),
+            onPressed: () {
+              Navigator.pushAndRemoveUntil(
+                context,
+                PageRouteBuilder(
+                  pageBuilder: (context, animation, secondaryAnimation) => const HomePage(),
+                  transitionDuration: Duration.zero,
+                  reverseTransitionDuration: Duration.zero,
+                ),
+                (route) => false,
+              );
             },
-            children: const [
-              Text("Daily"),
-              Text("Weekly"),
-              Text("Monthly"),
+          ),
+        ),
+        body: Container(
+          width: double.infinity,
+          height: double.infinity,
+          decoration: const BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [
+                Color.fromARGB(255, 241, 109, 231), // pink/purple
+                Colors.white, // fade to white
+              ],
+            ),
+          ),
+          child: Column(
+            children: [
+              SizedBox(height: screenHeight * 0.12), // Push content below AppBar
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                child: ToggleButtons(
+                  borderRadius: BorderRadius.circular(30),
+                  borderColor: const Color.fromARGB(255, 165, 35, 226),
+                  selectedBorderColor: const Color.fromARGB(255, 165, 35, 226),
+                  selectedColor: Colors.white,
+                  fillColor: const Color.fromARGB(255, 165, 35, 226),
+                  color: const Color.fromARGB(255, 165, 35, 226),
+                  textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                  constraints: const BoxConstraints(minHeight: 40, minWidth: 100),
+                  isSelected: _selectedFilters,
+                  onPressed: (int index) {
+                    setState(() {
+                      for (int i = 0; i < _selectedFilters.length; i++) {
+                        _selectedFilters[i] = i == index;
+                      }
+                      _fetchAndGroupData(); // Refresh data on filter change
+                    });
+                  },
+                  children: const [
+                    Text("Daily"),
+                    Text("Weekly"),
+                    Text("Monthly"),
+                  ],
+                ),
+              ),
+              // Pie chart title
+              Padding(
+                padding: const EdgeInsets.only(left: 0, right: 0, top: 30, bottom: 0),
+                child: Text(
+                  chartTitle,
+                  style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color:Color.fromARGB(255, 165, 35, 226)),
+                ),
+              ),
+              // Pie chart
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
+                child: _buildPieChart(),
+              ),
+              // Line chart title
+              Padding(
+                padding: const EdgeInsets.only(left: 0, right: 0, top: 20, bottom: 10),
+                child: Text(
+                  lineChartTitle,
+                  style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold,color:Color.fromARGB(255, 165, 35, 226)),
+                ),
+              ),
+              // Line chart
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
+                child: _buildLineGraph(),
+              ),
             ],
           ),
         ),
-        // Pie chart title
-        Padding(
-          padding: const EdgeInsets.only(left: 0, right: 0, top: 30, bottom: 0),
-          child: Text(
-            chartTitle,
-            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color:Color.fromARGB(255, 165, 35, 226)),
-          ),
-        ),
-        // Pie chart
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
-          child: _buildPieChart(),
-        ),
-        // Line chart title
-        Padding(
-          padding: const EdgeInsets.only(left: 0, right: 0, top: 20, bottom: 10),
-          child: Text(
-            lineChartTitle,
-            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold,color:Color.fromARGB(255, 165, 35, 226)),
-          ),
-        ),
-        // Line chart
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
-          child: _buildLineGraph(),
-        ),
-      ],
-    ),
-    bottomNavigationBar: _buildBottomAppBar(context, iconSize),
-  );
-}
+      bottomNavigationBar: _buildBottomAppBar(context, iconSize),
+      ),  
+    );
+  }
 
   Widget _buildBottomAppBar(BuildContext context, double iconSize) {
     double screenWidth = MediaQuery.of(context).size.width;

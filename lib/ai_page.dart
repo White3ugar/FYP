@@ -7,6 +7,11 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:googleapis_auth/auth_io.dart';
 import 'package:flutter/services.dart';
 import 'dart:convert';
+import 'expenseRecord_page.dart';
+import 'budgeting_page.dart';
+import 'home_page.dart';
+import 'dataVisual_page.dart';
+
 
 const String _apiKey = String.fromEnvironment('GEMINI_API_KEY');
 
@@ -274,74 +279,194 @@ class _AIPageState extends State<AIPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Chat with Sparx!'),
-      ),
-      body: Padding(
-        padding: const EdgeInsets.all(8.0),
-        child: Column(
-          children: <Widget>[
-            Expanded(
-              child: _apiKey.isNotEmpty
-                ? ListView.builder(
-                    controller: _scrollController,
-                    itemCount: _generatedContent.length,
-                    itemBuilder: (context, index) {
-                      final content = _generatedContent[index];
-                      return MessageWidget(
-                        text: content.text,
-                        image: content.image,
-                        isFromUser: content.fromUser,
-                      );
-                    },
-                  )
-                : const Center(
-                    child: Text("API Key not configured. Chat is disabled."),
-                  ),
+    double screenWidth = MediaQuery.of(context).size.width;
+    double iconSize = screenWidth * 0.08;
+    return PopScope(
+      canPop: false,
+      onPopInvoked: (didPop) {
+        if (!didPop) {
+          Navigator.pushAndRemoveUntil(
+            context,
+            PageRouteBuilder(
+              pageBuilder: (context, animation, secondaryAnimation) => const HomePage(),
+              transitionDuration: Duration.zero,
+              reverseTransitionDuration: Duration.zero,
             ),
-            if (_loading) const CircularProgressIndicator(),
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 25, horizontal: 15),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: TextField(
-                      controller: _textController,
-                      autofocus: true,
-                      decoration: InputDecoration(
-                        contentPadding: const EdgeInsets.all(15),
-                        hintText: 'Enter a prompt...',
-                        border: OutlineInputBorder(
-                          borderRadius: const BorderRadius.all(Radius.circular(14)),
-                          borderSide: BorderSide(
-                            color: Theme.of(context).colorScheme.secondary,
+            (route) => false,
+          );
+        }
+      },
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text('Chat with Sparx!'),
+          leading: IconButton(
+            icon: const Icon(
+              Icons.arrow_back,
+              color: Color.fromARGB(255, 165, 35, 226),
+            ),
+            onPressed: () {
+              Navigator.pushAndRemoveUntil(
+                context,
+                PageRouteBuilder(
+                  pageBuilder: (context, animation, secondaryAnimation) => const HomePage(),
+                  transitionDuration: Duration.zero,
+                  reverseTransitionDuration: Duration.zero,
+                ),
+                (route) => false,
+              );
+            },
+          ),
+        ),
+        body: Padding(
+          padding: const EdgeInsets.all(8.0),
+          child: Column(
+            children: <Widget>[
+              Expanded(
+                child: _apiKey.isNotEmpty
+                  ? ListView.builder(
+                      controller: _scrollController,
+                      itemCount: _generatedContent.length,
+                      itemBuilder: (context, index) {
+                        final content = _generatedContent[index];
+                        return MessageWidget(
+                          text: content.text,
+                          image: content.image,
+                          isFromUser: content.fromUser,
+                        );
+                      },
+                    )
+                  : const Center(
+                      child: Text("API Key not configured. Chat is disabled."),
+                    ),
+              ),
+              if (_loading) const CircularProgressIndicator(),
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 25, horizontal: 15),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: _textController,
+                        autofocus: true,
+                        decoration: InputDecoration(
+                          contentPadding: const EdgeInsets.all(15),
+                          hintText: 'How can I help you finance better?',
+                          border: OutlineInputBorder(
+                            borderRadius: const BorderRadius.all(Radius.circular(14)),
+                            borderSide: BorderSide(
+                              color: Theme.of(context).colorScheme.secondary,
+                            ),
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: const BorderRadius.all(Radius.circular(14)),
+                            borderSide: BorderSide(
+                              color: Theme.of(context).colorScheme.secondary,
+                            ),
                           ),
                         ),
-                        focusedBorder: OutlineInputBorder(
-                          borderRadius: const BorderRadius.all(Radius.circular(14)),
-                          borderSide: BorderSide(
-                            color: Theme.of(context).colorScheme.secondary,
-                          ),
-                        ),
+                        onSubmitted: _apiKey.isNotEmpty && !_loading ? (_) => _sendMessage() : null,
                       ),
-                      onSubmitted: _apiKey.isNotEmpty && !_loading ? (_) => _sendMessage() : null,
                     ),
-                  ),
-                  const SizedBox.square(dimension: 15),
-                  IconButton(
-                    onPressed: _apiKey.isNotEmpty && !_loading ? _sendMessage : null,
-                    icon: Icon(
-                      Icons.send,
-                      color: _loading ? Colors.grey : const Color.fromARGB(255, 165, 35, 226),
+                    const SizedBox.square(dimension: 15),
+                    IconButton(
+                      onPressed: _apiKey.isNotEmpty && !_loading ? _sendMessage : null,
+                      icon: Icon(
+                        Icons.send,
+                        color: _loading ? Colors.grey : const Color.fromARGB(255, 165, 35, 226),
+                      ),
                     ),
-                  ),
-                ],
-              )
-            ),
-          ],
+                  ],
+                )
+              ),
+            ],
+          ),
+        ),
+        bottomNavigationBar: _buildBottomAppBar(context, iconSize),
+      ),
+    );
+  }
+
+  Widget _buildBottomAppBar(BuildContext context, double iconSize) {
+    double screenWidth = MediaQuery.of(context).size.width;
+    double iconSpacing = screenWidth * 0.14;
+
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        boxShadow: [
+          BoxShadow(
+            color: Colors.grey.withOpacity(0.2),
+            spreadRadius: 1,
+            blurRadius: 6,
+            offset: const Offset(0, -3),
+          ),
+        ],
+      ),
+      child: BottomAppBar(
+        height: 100,
+        elevation: 0,
+        color: Colors.transparent,
+        shape: const CircularNotchedRectangle(),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 0, vertical: 10),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              _buildNavIconWithCaption(context, "assets/icon/record-book.png", "Record", iconSize, const ExpenseRecordPage()),
+              SizedBox(width: iconSpacing),
+              _buildNavIconWithCaption(context, "assets/icon/budget.png", "Budget", iconSize, const BudgetPage()),
+              SizedBox(width: iconSpacing),
+              _buildNavIconWithCaption(context, "assets/icon/dataVisual.png", "Graphs", iconSize, const DataVisualPage()),
+              SizedBox(width: iconSpacing),
+              _buildNavIconWithCaption(context, "assets/icon/chatbot.png", "AI", iconSize, const AIPage(), textColor: Colors.deepPurple),
+            ],
+          ),
         ),
       ),
+    );
+  }
+
+  Widget _buildNavIconWithCaption(
+    BuildContext context,
+    String assetPath,
+    String caption,
+    double size,
+    Widget page, {
+    Color textColor = Colors.grey
+  }) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        GestureDetector(
+          onTap: () {
+            Navigator.push(
+              context,
+              PageRouteBuilder(
+                pageBuilder: (context, animation, secondaryAnimation) => page,
+                transitionDuration: Duration.zero,
+                reverseTransitionDuration: Duration.zero,
+              ),
+            );
+          },
+          child: SizedBox(
+            width: size,
+            height: size,
+            child: Image.asset(
+              assetPath,
+              fit: BoxFit.contain,
+            ),
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          caption,
+          style: TextStyle(
+            fontSize: 13,
+            color: textColor,
+          ),
+        ),
+      ],
     );
   }
 }

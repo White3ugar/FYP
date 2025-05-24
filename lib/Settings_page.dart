@@ -1,27 +1,54 @@
 import 'package:flutter/material.dart';
 import 'home_page.dart'; // Import the HomePage
 import 'Settings_CategoriesManager.dart'; // Import the CategoriesManagerPage
+import 'Settings_UserSettings.dart'; // Import the UserSettingsPage
 
 class SettingsPage extends StatelessWidget {
   const SettingsPage({super.key});
 
+  //Build a reusable settings tile widget
+  Widget buildSettingsTile({
+    required String title,
+    required VoidCallback onTap,
+    IconData icon = Icons.arrow_forward_ios,
+    Color color = const Color.fromARGB(255, 165, 35, 226),
+  }) {
+    return ListTile(
+      title: Text(
+        title,
+        style: TextStyle(color: color),
+      ),
+      trailing: Icon(icon, color: color),
+      onTap: onTap,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: const Color.fromARGB(255, 239, 179, 236), // solid background color
       appBar: AppBar(
-        title: const Text("Settings"),
+        backgroundColor: const Color.fromARGB(255, 239, 179, 236), // solid background color
+        title: const Text(
+          "Settings",
+          style: TextStyle(
+            color:  Color.fromARGB(255, 165, 35, 226),
+          ),
+        ),
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back), // Back button icon
+          icon: const Icon(
+            Icons.arrow_back,
+            color: Color.fromARGB(255, 165, 35, 226),
+          ),
           onPressed: () {
-            // Navigate back to HomePage and clear the page stack
             Navigator.pushAndRemoveUntil(
               context,
               PageRouteBuilder(
                 pageBuilder: (context, animation, secondaryAnimation) => const HomePage(),
-                transitionDuration: Duration.zero, // No animation
+                transitionDuration: Duration.zero,
                 reverseTransitionDuration: Duration.zero,
               ),
-              (route) => false, // Removes all routes from the stack
+              (route) => false,
             );
           },
         ),
@@ -29,18 +56,16 @@ class SettingsPage extends StatelessWidget {
       body: ListView(
         padding: const EdgeInsets.all(16.0),
         children: [
-          // Categories Manager
-          ListTile(
-            title: const Text("Categories Manager"),
-            trailing: const Icon(Icons.arrow_forward_ios),
-            // Inside SettingsPage
+          buildSettingsTile(
+            title: "Categories Manager",
             onTap: () {
               Navigator.push(
                 context,
                 PageRouteBuilder(
-                  pageBuilder: (context, animation, secondaryAnimation) => const CategoriesManagerPage(),
+                  pageBuilder: (context, animation, secondaryAnimation) =>
+                      const CategoriesManagerPage(),
                   transitionsBuilder: (context, animation, secondaryAnimation, child) {
-                    const begin = Offset(1.0, 0.0); // from right to left
+                    const begin = Offset(1.0, 0.0);
                     const end = Offset.zero;
                     const curve = Curves.easeInOut;
 
@@ -53,27 +78,31 @@ class SettingsPage extends StatelessWidget {
               );
             },
           ),
-          
-          // Users Settings
-          ListTile(
-            title: const Text("Users Settings"),
-            trailing: const Icon(Icons.arrow_forward_ios),
+          buildSettingsTile(
+            title: "User Settings",
             onTap: () {
-              // Add navigation to the Users Settings page
-              // For now, show a placeholder message
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text("Users Settings clicked")),
+              Navigator.push(
+                context,
+                PageRouteBuilder(
+                  pageBuilder: (context, animation, secondaryAnimation) =>
+                      const UserSettingsPage(),
+                  transitionsBuilder: (context, animation, secondaryAnimation, child) {
+                    const begin = Offset(1.0, 0.0);
+                    const end = Offset.zero;
+                    const curve = Curves.easeInOut;
+
+                    var tween = Tween(begin: begin, end: end).chain(CurveTween(curve: curve));
+                    var offsetAnimation = animation.drive(tween);
+
+                    return SlideTransition(position: offsetAnimation, child: child);
+                  },
+                ),
               );
             },
           ),
-          
-          // Notification Settings
-          ListTile(
-            title: const Text("Notification Settings"),
-            trailing: const Icon(Icons.arrow_forward_ios),
+          buildSettingsTile(
+            title: "Notification Settings",
             onTap: () {
-              // Add navigation or functionality for Notification Settings
-              // For now, show a placeholder message
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(content: Text("Notification Settings clicked")),
               );

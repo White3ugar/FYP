@@ -459,7 +459,10 @@ class _ExpenseRecordPageState extends State<ExpenseRecordPage> {
             ],
           ),
           leading: IconButton(
-            icon: const Icon(Icons.arrow_back),
+            icon: const Icon(
+              Icons.arrow_back,
+              color: Color.fromARGB(255, 165, 35, 226),
+            ),
             onPressed: () {
               Navigator.pushAndRemoveUntil(
                 context,

@@ -918,127 +918,145 @@ class _BudgetPageState extends State<BudgetPage> {
     buttonHeight = screenHeight * 0.055;
     iconSize = screenWidth * 0.08;
 
-    return Scaffold(
-      extendBodyBehindAppBar: true, // Let gradient go behind AppBar
-      appBar: AppBar(
-        backgroundColor: Colors.transparent, // Make AppBar transparent to show gradient
-        elevation: 0,
-        title: const Text(
-          "Budgeting",
-          style: TextStyle(color: Color.fromARGB(255, 154, 16, 179)),
+    return PopScope(
+      canPop: false, // Prevent default pop behavior
+      onPopInvoked: (didPop) {
+        if (!didPop) {
+          Navigator.pushAndRemoveUntil(
+            context,
+            PageRouteBuilder(
+              pageBuilder: (context, animation, secondaryAnimation) => const HomePage(),
+              transitionDuration: Duration.zero,
+              reverseTransitionDuration: Duration.zero,
+            ),
+            (route) => false,
+          );
+        }
+      },
+      child: Scaffold(
+        extendBodyBehindAppBar: true, // Let gradient go behind AppBar
+        appBar: AppBar(
+          backgroundColor: Colors.transparent, // Make AppBar transparent to show gradient
+          elevation: 0,
+          title: const Text(
+            "Budgeting",
+            style: TextStyle(color: Color.fromARGB(255, 154, 16, 179)),
+          ),
+          leading: IconButton(
+            icon: const Icon(
+              Icons.arrow_back,
+              color: Color.fromARGB(255, 165, 35, 226),
+            ),
+            onPressed: () {
+              Navigator.pushAndRemoveUntil(
+                context,
+                PageRouteBuilder(
+                  pageBuilder: (context, animation, secondaryAnimation) =>
+                      const HomePage(),
+                  transitionDuration: Duration.zero,
+                  reverseTransitionDuration: Duration.zero,
+                ),
+                (route) => false,
+              );
+            },
+          ),
         ),
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () {
-            Navigator.pushAndRemoveUntil(
-              context,
-              PageRouteBuilder(
-                pageBuilder: (context, animation, secondaryAnimation) =>
-                    const HomePage(),
-                transitionDuration: Duration.zero,
-                reverseTransitionDuration: Duration.zero,
+        body: Container(
+          width: double.infinity,
+          height: double.infinity,
+          decoration: const BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [
+                Color.fromARGB(255, 241, 109, 231), // pink/purple
+                Colors.white, // fade to white
+              ],
+            ),
+          ),
+          child: Column(
+            children: [
+              SizedBox(height: screenHeight * 0.12), // Push content below AppBar
+              // Archive Button
+              SizedBox(
+                height: buttonHeight,
+                width: buttonWidth,
+                child: ElevatedButton(
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      PageRouteBuilder(
+                        pageBuilder: (context, animation, secondaryAnimation) =>
+                            const BudgetArchivePage(),
+                        transitionDuration: Duration.zero,
+                        reverseTransitionDuration: Duration.zero,
+                      ),
+                    );
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.purple[70],
+                    foregroundColor: purpleColor,
+                  ),
+                  child: const Text("View Archived Budgets"),
+                ),
               ),
-              (route) => false,
-            );
-          },
-        ),
-      ),
-      body: Container(
-        width: double.infinity,
-        height: double.infinity,
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [
-              Color.fromARGB(255, 241, 109, 231), // pink/purple
-              Colors.white, // fade to white
+
+              const SizedBox(height: 15),
+
+              SizedBox(
+                height: buttonHeight,
+                width: buttonWidth,
+                child: ElevatedButton(
+                  onPressed: () => _showAddBudgetPlanDialog(context),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.purple[70],
+                    foregroundColor: purpleColor,
+                  ),
+                  child: const Text("Add Budget Plan"),
+                ),
+              ),
+
+              const SizedBox(height: 15),
+
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                child: ToggleButtons(
+                  borderRadius: BorderRadius.circular(30),
+                  borderColor: const Color.fromARGB(255, 165, 35, 226),
+                  selectedBorderColor: const Color.fromARGB(255, 165, 35, 226),
+                  selectedColor: Colors.white,
+                  fillColor: const Color.fromARGB(255, 165, 35, 226),
+                  color: const Color.fromARGB(255, 165, 35, 226),
+                  textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                  constraints: const BoxConstraints(minHeight: 40, minWidth: 100),
+                  isSelected: _selectedFilters,
+                  onPressed: (int index) {
+                    setState(() {
+                      for (int i = 0; i < _selectedFilters.length; i++) {
+                        _selectedFilters[i] = i == index;
+                      }
+                      _isLoading = true;
+                    });
+                    _loadFilteredBudgets(); // Load new filter type
+                  },
+                  children: const [
+                    Text("Daily"),
+                    Text("Weekly"),
+                    Text("Monthly"),
+                  ],
+                ),
+              ),
+
+              Expanded(
+                child: _isLoading
+                    ? const Center(child: CircularProgressIndicator())
+                    : _buildBudgetList(),
+              ),
             ],
           ),
         ),
-        child: Column(
-          children: [
-            SizedBox(height: screenHeight * 0.12), // Push content below AppBar
-
-            // Archive Button
-            SizedBox(
-              height: buttonHeight,
-              width: buttonWidth,
-              child: ElevatedButton(
-                onPressed: () {
-                  Navigator.push(
-                    context,
-                    PageRouteBuilder(
-                      pageBuilder: (context, animation, secondaryAnimation) =>
-                          const BudgetArchivePage(),
-                      transitionDuration: Duration.zero,
-                      reverseTransitionDuration: Duration.zero,
-                    ),
-                  );
-                },
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.purple[70],
-                  foregroundColor: purpleColor,
-                ),
-                child: const Text("View Archived Budgets"),
-              ),
-            ),
-
-            const SizedBox(height: 15),
-
-            SizedBox(
-              height: buttonHeight,
-              width: buttonWidth,
-              child: ElevatedButton(
-                onPressed: () => _showAddBudgetPlanDialog(context),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.purple[70],
-                  foregroundColor: purpleColor,
-                ),
-                child: const Text("Add Budget Plan"),
-              ),
-            ),
-
-            const SizedBox(height: 15),
-
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20),
-              child: ToggleButtons(
-                borderRadius: BorderRadius.circular(30),
-                borderColor: const Color.fromARGB(255, 165, 35, 226),
-                selectedBorderColor: const Color.fromARGB(255, 165, 35, 226),
-                selectedColor: Colors.white,
-                fillColor: const Color.fromARGB(255, 165, 35, 226),
-                color: const Color.fromARGB(255, 165, 35, 226),
-                textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                constraints: const BoxConstraints(minHeight: 40, minWidth: 100),
-                isSelected: _selectedFilters,
-                onPressed: (int index) {
-                  setState(() {
-                    for (int i = 0; i < _selectedFilters.length; i++) {
-                      _selectedFilters[i] = i == index;
-                    }
-                    _isLoading = true;
-                  });
-                  _loadFilteredBudgets(); // Load new filter type
-                },
-                children: const [
-                  Text("Daily"),
-                  Text("Weekly"),
-                  Text("Monthly"),
-                ],
-              ),
-            ),
-
-            Expanded(
-              child: _isLoading
-                  ? const Center(child: CircularProgressIndicator())
-                  : _buildBudgetList(),
-            ),
-          ],
-        ),
+        bottomNavigationBar: _buildBottomAppBar(context, iconSize),
       ),
-      bottomNavigationBar: _buildBottomAppBar(context, iconSize),
     );
   }
 
