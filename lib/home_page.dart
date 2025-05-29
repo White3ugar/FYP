@@ -7,7 +7,7 @@ import 'ai_page.dart';
 import 'budgeting_page.dart';
 import 'expenseRecord_page.dart';
 import 'dataVisual_page.dart';
-import 'Settings_page.dart'; 
+import 'settings_page.dart'; 
 import 'package:fl_chart/fl_chart.dart';
 import 'package:intl/intl.dart';
 import 'package:smooth_page_indicator/smooth_page_indicator.dart';
@@ -467,7 +467,7 @@ class HomePageState extends State<HomePage> {
         ],
       ),
       body: isLoading
-          ? const Center(child: CircularProgressIndicator())
+          ? const Center(child: CircularProgressIndicator(color: Color.fromARGB(255, 165, 35, 226)))
           : Stack(
               children: [
                 //  Top Light Pink Section (Charts Section)

@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'home_page.dart'; // Import the HomePage
-import 'Settings_CategoriesManager.dart'; // Import the CategoriesManagerPage
-import 'Settings_UserSettings.dart'; // Import the UserSettingsPage
+import 'settings_CategoriesManager.dart'; // Import the CategoriesManagerPage
+import 'settings_UserSettings.dart'; // Import the UserSettingsPage
 
 class SettingsPage extends StatelessWidget {
   const SettingsPage({super.key});

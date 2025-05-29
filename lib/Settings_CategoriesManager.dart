@@ -85,7 +85,7 @@ class _CategoriesManagerPageState extends State<CategoriesManagerPage> {
               future: _categoriesFuture,
               builder: (context, snapshot) {
                 if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Center(child: CircularProgressIndicator());
+                  return const Center(child: CircularProgressIndicator(color: Color.fromARGB(255, 165, 35, 226)));
                 }
 
                 if (!snapshot.hasData || !snapshot.data!.exists) {

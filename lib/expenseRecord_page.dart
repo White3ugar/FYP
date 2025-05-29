@@ -7,6 +7,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:logger/logger.dart';
 import 'package:dropdown_button2/dropdown_button2.dart';
+import 'package:workmanager/workmanager.dart';
 
 class ExpenseRecordPage extends StatefulWidget {
   const ExpenseRecordPage({super.key});
@@ -127,7 +128,7 @@ class _ExpenseRecordPageState extends State<ExpenseRecordPage> {
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
           content: Row(
             children: [
-              const CircularProgressIndicator(color: Colors.purple),
+              const CircularProgressIndicator(color: Color.fromARGB(255, 165, 35, 226)),
               const SizedBox(width: 20),
               Expanded(child: Text(message)),
             ],
@@ -231,6 +232,26 @@ class _ExpenseRecordPageState extends State<ExpenseRecordPage> {
     }
   }
 
+  void triggerBudgetBackgroundTask() {
+    final logger = Logger();
+    final uid = FirebaseAuth.instance.currentUser?.uid ?? '';
+    logger.i("expenseRecord page: triggerBudgetBackgroundTask called with UID: $uid");
+
+    if (uid.isNotEmpty) {
+      logger.i('User is logged in; registering periodic task with UID: $uid');
+      Workmanager().registerOneOffTask(
+        "expenseBudgetTask",    
+        "expenseCheckBudgetTask",   
+        inputData: {
+          'uid': uid,
+        },
+      );
+    }
+    else {
+      logger.w('User not logged in; cannot register periodic task with UID');
+    }
+  }
+
   // Record transaction (income or expense)
   Future<void> _recordTransaction(bool isIncome) async {
     // Check if the user has selected a category and entered an amount
@@ -252,12 +273,22 @@ class _ExpenseRecordPageState extends State<ExpenseRecordPage> {
         showDialog(
           context: context,
           builder: (context) => AlertDialog(
-            title: const Text("Invalid Category"),
-            content: const Text("Selected category is not included in all selected budget plan(s)"),
+            backgroundColor: const Color.fromARGB(255, 165, 35, 226),
+            title: const Text(
+              "Invalid Category",
+              style: TextStyle(color: Colors.white),
+            ),
+            content: const Text(
+              "Selected category is not included in all selected budget plan(s)",
+              style: TextStyle(color: Colors.white),
+            ),
             actions: [
               TextButton(
                 onPressed: () => Navigator.of(context).pop(),
-                child: const Text("OK"),
+                child: const Text(
+                  "OK",
+                  style: TextStyle(color: Colors.white),
+                ),
               ),
             ],
           ),
@@ -383,9 +414,38 @@ class _ExpenseRecordPageState extends State<ExpenseRecordPage> {
         }
 
       if (mounted) {
-        Navigator.pop(context);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("${isIncome ? 'Income' : 'Expense'} recorded successfully!")),
+        Navigator.pop(context); // Close the current screen first
+        // Show success dialog for recording income or expense
+        showDialog(
+          context: context,
+          builder: (context) => AlertDialog(
+            backgroundColor: const Color.fromARGB(255, 165, 35, 226),
+            title: const Text(
+              'Success',
+              style: TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            content: Text(
+              "${isIncome ? 'Income' : 'Expense'} recorded successfully!",
+              style: const TextStyle(
+                color: Colors.white,
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () {
+                  Navigator.of(context).pop(); // Close the dialog
+                  triggerBudgetBackgroundTask(); // Call your background task
+                },
+                child: const Text(
+                  'OK',
+                  style: TextStyle(color: Colors.white),
+                ),
+              ),
+            ],
+          ),
         );
       }
     } catch (e) {
@@ -538,7 +598,7 @@ class _ExpenseRecordPageState extends State<ExpenseRecordPage> {
                           _buildDescriptionInputField("Description", descriptionController, TextInputType.text),
                           const SizedBox(height: 10),
                           isSubmitting
-                              ? const Center(child: CircularProgressIndicator())
+                              ? const Center(child: CircularProgressIndicator(color: Color.fromARGB(255, 165, 35, 226)))
                               : Center(
                                   child: ElevatedButton(
                                     onPressed: () async {
@@ -584,7 +644,7 @@ class _ExpenseRecordPageState extends State<ExpenseRecordPage> {
       future: _expenseCategoriesFuture,
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Center(child: CircularProgressIndicator());
+          return const Center(child: CircularProgressIndicator(color: Color.fromARGB(255, 165, 35, 226)));
         }
 
         if (!snapshot.hasData || !snapshot.data!.exists) {
@@ -614,7 +674,7 @@ class _ExpenseRecordPageState extends State<ExpenseRecordPage> {
       future: _incomeCategoriesFuture,
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Center(child: CircularProgressIndicator());
+          return const Center(child: CircularProgressIndicator(color: Color.fromARGB(255, 165, 35, 226)));
         }
 
         if (!snapshot.hasData || !snapshot.data!.exists) {
@@ -757,7 +817,7 @@ class _ExpenseRecordPageState extends State<ExpenseRecordPage> {
         return StatefulBuilder( // 👈 Wrap your AlertDialog here
           builder: (context, setStateDialog) {
             return AlertDialog(
-              title: const Text("Select Budget Plans"),
+              title: const Text("Select Budget Plan(s)"),
               content: SingleChildScrollView(
                 child: ListBody(
                   children: budgetPlans.map((plan) {
@@ -784,11 +844,15 @@ class _ExpenseRecordPageState extends State<ExpenseRecordPage> {
               ),
               actions: [
                 TextButton(
-                  child: const Text("Cancel"),
+                  child: const Text("Cancel",
+                    style: TextStyle(color: Color.fromARGB(255, 165, 35, 226)),
+                  ),
                   onPressed: () => Navigator.pop(context),
                 ),
                 TextButton(
-                  child: const Text("OK"),
+                  child: const Text("OK",
+                    style: TextStyle(color: Color.fromARGB(255, 165, 35, 226)),
+                  ),
                   onPressed: () => Navigator.pop(context),
                 ),
               ],

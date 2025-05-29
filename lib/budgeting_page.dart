@@ -99,7 +99,7 @@ class _BudgetPageState extends State<BudgetPage> {
         final endTimestamp = data['budgetPlanEnd'];
         final currentStatus = data['budgetStatus'];
 
-        if (endTimestamp == null || currentStatus == 'Expired') continue;
+        if (endTimestamp == null || currentStatus == 'Expired' || currentStatus == 'Archived') continue;
 
         final endDate = (endTimestamp as Timestamp).toDate();
 
@@ -233,19 +233,32 @@ class _BudgetPageState extends State<BudgetPage> {
                                   final shouldArchive = await showDialog<bool>(
                                     context: context,
                                     builder: (ctx) => AlertDialog(
-                                      title: const Text("Archive Budget Plan"),
-                                      content: Text("Are you sure you want to archive '$planName'?"),
+                                      backgroundColor: const Color.fromARGB(255, 165, 35, 226),
+                                      title: const Text(
+                                        "Archive Budget Plan",
+                                        style: TextStyle(color: Colors.white),
+                                      ),
+                                      content: Text(
+                                        "Are you sure you want to archive '$planName'?",
+                                        style: const TextStyle(color: Colors.white),
+                                      ),
                                       actions: [
                                         TextButton(
                                           onPressed: () => Navigator.pop(ctx, false),
-                                          child: const Text("Cancel"),
+                                          child: const Text(
+                                            "Cancel",
+                                            style: TextStyle(color: Colors.white),
+                                          ),
                                         ),
                                         TextButton(
                                           onPressed: () => Navigator.pop(ctx, true),
-                                          child: const Text("Archive", style: TextStyle(color: Colors.red)),
+                                          child: const Text(
+                                            "Archive",
+                                            style: TextStyle(color: Colors.red),
+                                          ),
                                         ),
                                       ],
-                                    ),
+                                    )
                                   );
 
                                   if (shouldArchive == true) {
@@ -279,12 +292,13 @@ class _BudgetPageState extends State<BudgetPage> {
                                         showDialog(
                                           context: context,
                                           builder: (ctx) => AlertDialog(
+                                            backgroundColor: const Color.fromARGB(255, 165, 35, 226),
                                             title: const Text("Success"),
                                             content: Text("The budget plan '$planName' has been archived."),
                                             actions: [
                                               TextButton(
                                                 onPressed: () => Navigator.pop(ctx),
-                                                child: const Text("OK"),
+                                                child: const Text("OK" ,style: TextStyle(color: Colors.white),),
                                               ),
                                             ],
                                           ),
@@ -297,12 +311,13 @@ class _BudgetPageState extends State<BudgetPage> {
                                         showDialog(
                                           context: context,
                                           builder: (ctx) => AlertDialog(
+                                            backgroundColor: const Color.fromARGB(255, 165, 35, 226),
                                             title: const Text("Error"),
                                             content: const Text("No matching budget plan found to archive."),
                                             actions: [
                                               TextButton(
                                                 onPressed: () => Navigator.pop(ctx),
-                                                child: const Text("OK"),
+                                                child: const Text("OK", style: TextStyle(color: Colors.white),),                                                
                                               ),
                                             ],
                                           ),
@@ -320,7 +335,7 @@ class _BudgetPageState extends State<BudgetPage> {
                                       ? const SizedBox(
                                           width: 24,
                                           height: 24,
-                                          child: CircularProgressIndicator(strokeWidth: 2),
+                                          child: CircularProgressIndicator(color: Color.fromARGB(255, 165, 35, 226),strokeWidth: 2),
                                         )
                                       : IconButton(
                                           icon: const Icon(Icons.check),
@@ -363,16 +378,29 @@ class _BudgetPageState extends State<BudgetPage> {
                                       final shouldDelete = await showDialog<bool>(
                                         context: context,
                                         builder: (ctx) => AlertDialog(
-                                          title: const Text("Delete Budget Plan"),
-                                          content: Text("Are you sure you want to delete '$planName'?"),
+                                          backgroundColor: const Color.fromARGB(255, 165, 35, 226),
+                                          title: const Text(
+                                            "Delete Budget Plan",
+                                            style: TextStyle(color: Colors.white),
+                                          ),
+                                          content: Text(
+                                            "Are you sure you want to delete '$planName'?",
+                                            style: const TextStyle(color: Colors.white),
+                                          ),
                                           actions: [
                                             TextButton(
                                               onPressed: () => Navigator.pop(ctx, false),
-                                              child: const Text("Cancel"),
+                                              child: const Text(
+                                                "Cancel",
+                                                style: TextStyle(color: Colors.white),
+                                              ),
                                             ),
                                             TextButton(
                                               onPressed: () => Navigator.pop(ctx, true),
-                                              child: const Text("Delete", style: TextStyle(color: Colors.red)),
+                                              child: const Text(
+                                                "Delete",
+                                                style: TextStyle(color: Color.fromARGB(255, 247, 56, 43)),
+                                              ),
                                             ),
                                           ],
                                         ),
@@ -659,7 +687,11 @@ class _BudgetPageState extends State<BudgetPage> {
         return StatefulBuilder(
           builder: (context, setState) {
             return AlertDialog(
-              title: const Text("New Budget Plan"),
+              backgroundColor: const Color.fromARGB(255, 165, 35, 226),
+              title: const Text(
+                "New Budget Plan",
+                style: TextStyle(color: Colors.white),
+              ),
               content: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
@@ -668,14 +700,36 @@ class _BudgetPageState extends State<BudgetPage> {
                     decoration: const InputDecoration(
                       labelText: "Plan Name",
                       hintText: "Enter budget plan name",
+                      labelStyle: TextStyle(color: Colors.white),
+                      hintStyle: TextStyle(color: Colors.white70),
+                      enabledBorder: UnderlineInputBorder(
+                        borderSide: BorderSide(color: Colors.white),
+                      ),
+                      focusedBorder: UnderlineInputBorder(
+                        borderSide: BorderSide(color: Colors.white),
+                      ),
                     ),
+                    style: const TextStyle(color: Colors.white),
                   ),
                   const SizedBox(height: 16),
                   DropdownButtonFormField<String>(
                     value: selectedType,
-                    decoration: const InputDecoration(labelText: "Budget Plan Type"),
+                    decoration: const InputDecoration(
+                      labelText: "Budget Plan Type",
+                      labelStyle: TextStyle(color: Colors.white),
+                      enabledBorder: UnderlineInputBorder(
+                        borderSide: BorderSide(color: Colors.white),
+                      ),
+                      focusedBorder: UnderlineInputBorder(
+                        borderSide: BorderSide(color: Colors.white),
+                      ),
+                    ),
+                    dropdownColor: const Color.fromARGB(255, 165, 35, 226),
                     items: ['Daily', 'Weekly', 'Monthly']
-                        .map((type) => DropdownMenuItem(value: type, child: Text(type)))
+                        .map((type) => DropdownMenuItem(
+                              value: type,
+                              child: Text(type, style: const TextStyle(color: Colors.white)),
+                            ))
                         .toList(),
                     onChanged: (value) {
                       if (value != null) {
@@ -684,15 +738,20 @@ class _BudgetPageState extends State<BudgetPage> {
                         });
                       }
                     },
+                    style: const TextStyle(color: Colors.white),
                   ),
                 ],
               ),
               actions: [
                 TextButton(
                   onPressed: () => Navigator.pop(dialogContext),
-                  child: const Text("Cancel"),
+                  child: const Text("Cancel", style: TextStyle(color: Colors.white)),
                 ),
                 ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.white,
+                    foregroundColor: const Color.fromARGB(255, 165, 35, 226),
+                  ),
                   onPressed: () async {
                     final planName = planNameController.text.trim();
                     if (planName.isEmpty) return;
@@ -701,7 +760,6 @@ class _BudgetPageState extends State<BudgetPage> {
                       final userId = FirebaseAuth.instance.currentUser!.uid;
                       final now = DateTime.now();
 
-                      // Calculate budgetPlanEnd based on selectedType
                       DateTime endDate;
                       if (selectedType == 'Daily') {
                         endDate = now.add(const Duration(days: 1));
@@ -711,7 +769,6 @@ class _BudgetPageState extends State<BudgetPage> {
                         endDate = now.add(const Duration(days: 30));
                       }
 
-                      // Create budget plan under /budget_plans/userID/{selectedType}
                       await FirebaseFirestore.instance
                           .collection('budget_plans')
                           .doc(userId)
@@ -732,12 +789,16 @@ class _BudgetPageState extends State<BudgetPage> {
                       showDialog(
                         context: context,
                         builder: (context) => AlertDialog(
-                          title: const Text("Success"),
-                          content: Text("Budget plan '$planName' created!"),
+                          backgroundColor: const Color.fromARGB(255, 165, 35, 226),
+                          title: const Text("Success", style: TextStyle(color: Colors.white)),
+                          content: Text(
+                            "Budget plan '$planName' created!",
+                            style: const TextStyle(color: Colors.white),
+                          ),
                           actions: [
                             TextButton(
                               onPressed: () => Navigator.of(context).pop(),
-                              child: const Text("OK"),
+                              child: const Text("OK", style: TextStyle(color: Colors.white)),
                             ),
                           ],
                         ),
@@ -747,12 +808,16 @@ class _BudgetPageState extends State<BudgetPage> {
                       showDialog(
                         context: context,
                         builder: (context) => AlertDialog(
-                          title: const Text("Error"),
-                          content: Text("Failed to create budget plan: $e"),
+                          backgroundColor: const Color.fromARGB(255, 165, 35, 226),
+                          title: const Text("Error", style: TextStyle(color: Colors.white)),
+                          content: Text(
+                            "Failed to create budget plan: $e",
+                            style: const TextStyle(color: Colors.white),
+                          ),
                           actions: [
                             TextButton(
                               onPressed: () => Navigator.of(context).pop(),
-                              child: const Text("OK"),
+                              child: const Text("OK", style: TextStyle(color: Colors.white)),
                             ),
                           ],
                         ),
@@ -1049,7 +1114,7 @@ class _BudgetPageState extends State<BudgetPage> {
 
               Expanded(
                 child: _isLoading
-                    ? const Center(child: CircularProgressIndicator())
+                    ? const Center(child: CircularProgressIndicator(color: Color.fromARGB(255, 165, 35, 226)))
                     : _buildBudgetList(),
               ),
             ],
@@ -1250,7 +1315,7 @@ class _AddBudgetFormState extends State<_AddBudgetForm> {
     double dropdownWidth = screenWidth * 0.55;
     // Show loading indicator while data is being fetched
     return isLoading
-    ? const Center(child: CircularProgressIndicator())
+    ? const Center(child: CircularProgressIndicator(color: Color.fromARGB(255, 165, 35, 226)))
     : Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -1342,7 +1407,15 @@ class _AddBudgetFormState extends State<_AddBudgetForm> {
             ],
             decoration: const InputDecoration(
               labelText: "Amount",
+              labelStyle: TextStyle(color: Colors.black), // Default label color
+              floatingLabelStyle: TextStyle(color: Colors.black), // Focused label color
               border: OutlineInputBorder(),
+              focusedBorder: OutlineInputBorder(
+                borderSide: BorderSide(
+                  color: Color.fromARGB(255, 165, 35, 226),
+                  width: 2.0,
+                ),
+              ),
             ),
           ),
           const SizedBox(height: 30),
@@ -1392,12 +1465,13 @@ class _AddBudgetFormState extends State<_AddBudgetForm> {
                           context: context,
                           builder: (BuildContext context) {
                             return AlertDialog(
-                              title: const Text('Success'),
-                              content: const Text('Category saved successfully!'),
+                              backgroundColor: const Color.fromARGB(255, 165, 35, 226),
+                              title: const Text('Success', style: TextStyle(color: Colors.white),),
+                              content: const Text('Category saved successfully!', style: TextStyle(color: Colors.white),),
                               actions: [
                                 TextButton(
                                   onPressed: () => Navigator.of(context).pop(),
-                                  child: const Text('OK'),
+                                  child: const Text('OK', style: TextStyle(color: Colors.white),),
                                 ),
                               ],
                             );
@@ -1427,7 +1501,7 @@ class _AddBudgetFormState extends State<_AddBudgetForm> {
                       "Save",
                       style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
                     ),
-                  ) : const CircularProgressIndicator()  
+                  ) : const CircularProgressIndicator(color: Color.fromARGB(255, 165, 35, 226)) 
           ),
         ],
       );

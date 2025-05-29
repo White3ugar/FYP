@@ -40,6 +40,10 @@ dependencies:
   http: ^1.1.0 # HTTP package for making network requests
   googleapis_auth: ^1.4.0 # Google APIs authentication package
   firebase_vertexai: 0.2.3+1
+  flutter_local_notifications: ^16.1.0 # Local notifications package for scheduling and displaying notifications
+  workmanager: ^0.5.2 # Workmanager package for background tasks
+  shared_preferences: ^2.2.2 # Shared preferences package for storing simple key-value pairs
+  permission_handler: ^11.0.0 # Permission handler package for managing app permissions
 
   # The following adds the Cupertino Icons font to your application.
   # Use with the CupertinoIcons class for iOS style icons.

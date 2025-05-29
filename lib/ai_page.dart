@@ -339,7 +339,7 @@ class _AIPageState extends State<AIPage> {
                       child: Text("API Key not configured. Chat is disabled."),
                     ),
               ),
-              if (_loading) const CircularProgressIndicator(),
+              if (_loading) const CircularProgressIndicator(color: Color.fromARGB(255, 165, 35, 226)),
               Padding(
                 padding: const EdgeInsets.symmetric(vertical: 25, horizontal: 15),
                 child: Row(

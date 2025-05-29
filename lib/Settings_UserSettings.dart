@@ -159,7 +159,7 @@ class _UserSettingsPageState extends State<UserSettingsPage> {
   @override
   Widget build(BuildContext context) {
     if (username == null || email == null) {
-      return const Center(child: CircularProgressIndicator());
+      return const Center(child: CircularProgressIndicator(color: Color.fromARGB(255, 165, 35, 226)));
     }
 
     return Scaffold(

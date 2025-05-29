@@ -3,12 +3,161 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:google_sign_in/google_sign_in.dart';
-import 'home_page.dart'; // Import Home Page
+import 'package:workmanager/workmanager.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'home_page.dart'; 
 import 'register_page.dart';
+import 'notification.dart'; 
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:logger/logger.dart';
+import 'package:permission_handler/permission_handler.dart';
+import 'dart:io'; // Import dart:io for platform checks
+
+
+Future<void> requestNotificationPermission() async {
+  if (Platform.isAndroid) {
+    if (await Permission.notification.isDenied ||
+        await Permission.notification.isPermanentlyDenied) {
+      await Permission.notification.request();
+    }
+  }
+}
+
+@pragma('vm:entry-point')
+void callbackDispatcher() {
+  final loggerr = Logger();
+  loggerr.i("📌 notificationSender initialized");
+
+  Workmanager().executeTask((taskName, inputData) async {
+    loggerr.i('✅ Workmanager background task triggered: $taskName');
+
+    await Firebase.initializeApp();
+    final firestore = FirebaseFirestore.instance;
+    final prefs = await SharedPreferences.getInstance();
+
+    final uid = inputData?['uid'] as String?;
+
+    loggerr.i('🔍 UID from inputData: $uid');
+
+    if (uid == null || uid.isEmpty) {
+      loggerr.w('⚠️ No UID provided in inputData. Skipping task.');
+      return true;
+    }
+
+    const budgetTypes = ['Daily', 'Weekly', 'Monthly'];
+
+    for (final type in budgetTypes) {
+      loggerr.i('Testing 1');
+      final budgetSnapshots = await firestore
+          .collection('budget_plans')
+          .doc(uid)
+          .collection(type)
+          .get();
+
+      for (final budgetDoc in budgetSnapshots.docs) {
+        loggerr.i('Testing 2');
+
+        final docData = budgetDoc.data();
+        final String? status = docData['budgetStatus'];
+
+        if (status != 'Active') {
+          loggerr.i('⏩ Skipping budget plan "${docData['budgetPlanName']}" because status is "$status"');
+          continue; // Skip this document
+        }
+
+        final budgetPlanName = docData['budgetPlanName'];
+        final contents = await budgetDoc.reference
+            .collection('budget_contents')
+            .get();
+
+        for (final categoryDoc in contents.docs) {
+          loggerr.i('Testing 3');
+          final data = categoryDoc.data();
+          final double amount = data['Amount']?.toDouble() ?? 0;
+          final double spent = data['Spent']?.toDouble() ?? 0;
+          final String category = data['Category'] ?? '';
+          final double threshold = amount * 0.8;
+
+          final flagKey = '${uid}_$type${budgetDoc.id}_${categoryDoc.id}_notified';
+
+          // For debugging: force flag to false
+          //await prefs.setBool(flagKey, false);
+
+          if (spent >= threshold) {
+            loggerr.i('Spent more than threshold, triggering notification sending');
+            final alreadyNotified = prefs.getBool(flagKey) ?? false;
+            loggerr.i('🔍 Notification flag for $category [$flagKey] = $alreadyNotified');
+
+            if (!alreadyNotified) {
+              final remaining = amount - spent;
+              await showNotification(
+                title: "Budget Alert",
+                body:
+                    'You have spent 80% for $category category under $type budget "$budgetPlanName", the remaining amount is RM ${remaining.toStringAsFixed(2)}',
+              );
+
+              loggerr.i('📣 Notification sent for $category in $type budget: $budgetPlanName');
+              await prefs.setBool(flagKey, true);
+            }
+          } else {
+            // Reset notification flag if spent goes below 80% again
+            await prefs.setBool(flagKey, false);
+          }
+        }
+      }
+    }
+
+    return true;
+  });
+}
 
 void main() async {
+  final logger = Logger();
   WidgetsFlutterBinding.ensureInitialized();
+
+  // 1. Initialize Firebase
   await Firebase.initializeApp();
+
+  // 2. Request notification permission for android > 13
+  await requestNotificationPermission();
+
+  // 3. Initialize WorkManager (for background task)
+  logger.i("📌 Initializing Workmanager for notificationSender function");
+  Workmanager().initialize(callbackDispatcher, isInDebugMode: false);
+
+  // Register one-off task for immediate execution (for debug)
+  // Workmanager().registerOneOffTask(
+  //   "testBudgetTask",
+  //   "testBudgetTask",
+  //   inputData: {
+  //     'uid': FirebaseAuth.instance.currentUser?.uid ?? '',
+  //   },
+  // );
+
+  // 4. Register periodic background task
+  final uid = FirebaseAuth.instance.currentUser?.uid;
+  logger.i('🔍 Current user UID at line 139: $uid');
+
+  if (uid != null && uid.isNotEmpty) {
+    Workmanager().registerPeriodicTask(
+      "checkBudgetTask",
+      "checkBudgetTask",
+      frequency: const Duration(hours: 1),
+      inputData: {'uid': uid},
+    );
+  } else {
+    logger.w('User not logged in; cannot register periodic task with UID');
+  }
+
+  // 5. Initialize local notifications
+  const AndroidInitializationSettings initializationSettingsAndroid =
+      AndroidInitializationSettings('@mipmap/ic_launcher');
+
+  const InitializationSettings initializationSettings = InitializationSettings(android: initializationSettingsAndroid);
+
+  await flutterLocalNotificationsPlugin.initialize(initializationSettings);
+
+  // 6. Launch your app
   runApp(const MyApp());
 }
 

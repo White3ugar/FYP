@@ -186,7 +186,11 @@ class _DataVisualPageState extends State<DataVisualPage> {
     if (_isLoading) {
       return Padding(
         padding: EdgeInsets.only(top: loadIconHeight),
-        child: const Center(child: CircularProgressIndicator()),
+        child: const Center(
+          child: CircularProgressIndicator(
+            valueColor: AlwaysStoppedAnimation<Color>(Color.fromARGB(255, 165, 35, 226)),
+          ),
+        ),
       );
     }
 
@@ -206,7 +210,9 @@ class _DataVisualPageState extends State<DataVisualPage> {
     final values = categoryTotals.values.toList();
 
     if (categories.isEmpty) {
-      return const Center(child: Text('No data available.'));
+      return const Center(child: Text('No data available.',
+        style: TextStyle(fontSize: 20, color: Colors.white),
+      ));
     }
 
     return SizedBox(
@@ -262,7 +268,11 @@ class _DataVisualPageState extends State<DataVisualPage> {
     if (_isLoading) {
       return Padding(
         padding: EdgeInsets.only(top: loadIconHeight),
-        child: const Center(child: CircularProgressIndicator()),
+        child: const Center(
+          child: CircularProgressIndicator(
+            valueColor: AlwaysStoppedAnimation<Color>(Color.fromARGB(255, 165, 35, 226)),
+          ),
+        ),
       );
     }
 
@@ -282,7 +292,9 @@ class _DataVisualPageState extends State<DataVisualPage> {
     }
 
     if (totals.isEmpty) {
-      return const Center(child: Text('No data available.'));
+      return const Center(child: Text('No data available.',
+        style: TextStyle(fontSize: 20, color: Colors.white),
+      ));
     }
 
     final sortedKeys = totals.keys.toList()
