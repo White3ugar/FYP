@@ -3,7 +3,6 @@ import 'package:firebase_vertexai/firebase_vertexai.dart';
 import 'package:logger/logger.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-// import 'package:http/http.dart' as http;
 import 'package:googleapis_auth/auth_io.dart';
 import 'package:flutter/services.dart';
 import 'dart:convert';
@@ -17,7 +16,7 @@ const String _apiKey = String.fromEnvironment('GEMINI_API_KEY');
 
 class DialogflowService {
   final String projectId = 'fyp1-f09f5';
-  final String languageCode = 'en'; // or your preferred language
+  final String languageCode = 'en'; //Define the language code for Dialogflow
     final Logger logger = Logger();
 
   Future<Map<String, dynamic>> detectIntent(String query) async {
@@ -91,10 +90,13 @@ class _AIPageState extends State<AIPage> {
     _model = FirebaseVertexAI.instance.generativeModel(
       model: 'gemini-2.0-flash',
       systemInstruction: Content.text(
-        "You are a friendly and energetic financial assistant named Sparx. If user asks something not related to finance, "
+        "You are a friendly and energetic financial assistant named Sparx. If the user asks something not related to finance, "
         "politely inform them that you are not able to assist with that. "
-        "Provide concise, clear, and engaging responses. "
-        "Avoid using the '*' symbol. "
+        "Do not explicitly mention that you cannot assist with non-financial topics unless the user asks about them. "
+        "You will receive user profile details (such as occupation, income range, and financial goals). "
+        "These are provided for context only — do not use or refer to this information unless it helps answer a finance-related question explicitly asked by the user. "
+        "If the user does not ask a financial question, do not mention the user profile at all. "
+        "Provide concise, clear, and engaging responses. Avoid using the '*' symbol. "
         "Start directly with the answer—do not use phrases like 'Based on...'. "
         "Include specific values for each expense category when giving reviews or recommendations. "
         "Keep responses under 12 sentences."
@@ -237,20 +239,43 @@ class _AIPageState extends State<AIPage> {
         finalPrompt = "$finalPrompt for ${startDate.toLocal()}";
       }
 
-      if (startDate != null && endDate != null) {
-        final uid = getCurrentUserID();
-        if (uid == null) throw Exception("User not logged in.");
+      final uid = getCurrentUserID();
+      if (uid == null) throw Exception("User not logged in.");
 
+      // Fetch user preferences from Firestore
+      final prefsDoc = await FirebaseFirestore.instance.collection('users').doc(uid).get();
+      final prefs = prefsDoc.data() ?? {};
+
+      final occupation = prefs['occupation'] ?? 'not specified';
+      final incomeRange = prefs['incomeRange'] ?? 'not specified';
+      final financialGoals = prefs['financialGoals'] ?? 'not specified';
+      final financeMethod = prefs['financeMethod'] ?? 'not specified';
+      final spendingPriority = (prefs['spendingPriority'] as List<dynamic>?)?.join(', ') ?? 'none';
+
+      String preferenceSummary = '''
+        User Profile:
+        - Occupation: $occupation
+        - Income Range: $incomeRange
+        - Financial Goals: $financialGoals
+        - Finance Management Method: $financeMethod
+        - Spending Priorities: $spendingPriority
+        ''';
+
+      // If there's a specific date range, get summary
+      if (startDate != null && endDate != null) {
         final summary = await fetchAndSummarizeExpenses(uid, startDate, endDate);
 
         if (summary.isEmpty || summary.contains('No expense data')) {
-          finalPrompt = "Explain in friendly: No record found in this date period.\n\n$userPrompt";
+          finalPrompt = "$preferenceSummary\nExplain in friendly: No record found in this date period.\n\n$userPrompt";
         } else {
-          finalPrompt = "$summary\n\n$userPrompt";
+          finalPrompt = "$preferenceSummary\n$summary\n\n$userPrompt";
         }
+      } else {
+        finalPrompt = "$preferenceSummary\n$userPrompt";
       }
 
       logger.i("Final prompt: $finalPrompt");
+
       final response = await _chat.sendMessage(Content.text(finalPrompt));
       final String? text = response.text;
 

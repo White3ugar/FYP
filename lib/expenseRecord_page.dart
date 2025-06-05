@@ -232,23 +232,37 @@ class _ExpenseRecordPageState extends State<ExpenseRecordPage> {
     }
   }
 
-  void triggerBudgetBackgroundTask() {
+  Future<void> triggerBudgetBackgroundTask() async {
     final logger = Logger();
     final uid = FirebaseAuth.instance.currentUser?.uid ?? '';
-    logger.i("expenseRecord page: triggerBudgetBackgroundTask called with UID: $uid");
+    logger.i("📌 expenseRecord page: triggerBudgetBackgroundTask called with UID: $uid");
 
-    if (uid.isNotEmpty) {
-      logger.i('User is logged in; registering periodic task with UID: $uid');
-      Workmanager().registerOneOffTask(
-        "expenseBudgetTask",    
-        "expenseCheckBudgetTask",   
-        inputData: {
-          'uid': uid,
-        },
-      );
+    if (uid.isEmpty) {
+      logger.w('⚠️ User not logged in; cannot register periodic task');
+      return;
     }
-    else {
-      logger.w('User not logged in; cannot register periodic task with UID');
+
+    try {
+      final docSnapshot = await FirebaseFirestore.instance
+          .collection('notifications')
+          .doc(uid)
+          .get();
+
+      final allowNotification = docSnapshot.data()?['allowNotification'];
+
+      if (allowNotification == true) {
+        logger.i('🔔 Notifications allowed — registering one-off task for UID: $uid');
+
+        Workmanager().registerOneOffTask(
+          "expenseBudgetTask",
+          "expenseCheckBudgetTask",
+          inputData: {'uid': uid},
+        );
+      } else {
+        logger.i('🔕 Notifications are disabled — skipping one-off task registration');
+      }
+    } catch (e) {
+      logger.e("❌ Error checking notification preferences: $e");
     }
   }
 
@@ -436,8 +450,8 @@ class _ExpenseRecordPageState extends State<ExpenseRecordPage> {
             actions: [
               TextButton(
                 onPressed: () {
-                  Navigator.of(context).pop(); // Close the dialog
-                  triggerBudgetBackgroundTask(); // Call your background task
+                  Navigator.of(context).pop(); 
+                  triggerBudgetBackgroundTask(); // Call background task for notifications
                 },
                 child: const Text(
                   'OK',

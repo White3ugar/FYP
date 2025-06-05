@@ -1,18 +1,22 @@
 import 'package:flutter/material.dart';
-import 'package:google_generative_ai/google_generative_ai.dart';
+import 'package:firebase_vertexai/firebase_vertexai.dart';
 import 'package:logger/logger.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-// import 'package:http/http.dart' as http;
 import 'package:googleapis_auth/auth_io.dart';
 import 'package:flutter/services.dart';
 import 'dart:convert';
+import 'expenseRecord_page.dart';
+import 'budgeting_page.dart';
+import 'home_page.dart';
+import 'dataVisual_page.dart';
+
 
 const String _apiKey = String.fromEnvironment('GEMINI_API_KEY');
 
 class DialogflowService {
   final String projectId = 'fyp1-f09f5';
-  final String languageCode = 'en'; // or your preferred language
+  final String languageCode = 'en'; //Define the language code for Dialogflow
     final Logger logger = Logger();
 
   Future<Map<String, dynamic>> detectIntent(String query) async {
@@ -82,15 +86,20 @@ class _AIPageState extends State<AIPage> {
   @override
   void initState() {
     super.initState();
-    if (_apiKey.isNotEmpty) {
-      _model = GenerativeModel(
-        model: 'gemini-2.0-flash',
-        apiKey: _apiKey,
-      );
-      _chat = _model.startChat();
-    } else {
-      logger.i("API Key is missing. Gemini features will be disabled.");
-    }
+
+    _model = FirebaseVertexAI.instance.generativeModel(
+      model: 'gemini-2.0-flash',
+      systemInstruction: Content.text(
+        "You are a friendly and energetic financial assistant named Sparx. If user asks something not related to finance, "
+        "politely inform them that you are not able to assist with that. "
+        "Provide concise, clear, and engaging responses. "
+        "Avoid using the '*' symbol. "
+        "Start directly with the answer—do not use phrases like 'Based on...'. "
+        "Include specific values for each expense category when giving reviews or recommendations. "
+        "Keep responses under 12 sentences."
+      ),
+    );
+    _chat = _model.startChat();
   }
 
   String? getCurrentUserID() {
@@ -191,13 +200,6 @@ class _AIPageState extends State<AIPage> {
 
 
   Future<void> _sendMessage() async {
-    if (_apiKey.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("API Key not configured. Cannot send message."))
-      );
-      return;
-    }
-
     if (_textController.text.isEmpty) return;
 
     final String userPrompt = _textController.text;
@@ -213,76 +215,46 @@ class _AIPageState extends State<AIPage> {
       logger.i("User prompt: $userPrompt");
 
       String finalPrompt = userPrompt;
-
-      // Fetching the response from Dialogflow
       final dialogflowResponse = await dialogflowService.detectIntent(userPrompt);
 
-      // Extracting parameters
       final date = dialogflowResponse['date'] ?? '';
       final datePeriod = dialogflowResponse['date-period'] ?? {};
 
-      DateTime? startDate;  // Nullable DateTime
-      DateTime? endDate;    // Nullable DateTime
+      DateTime? startDate;
+      DateTime? endDate;
 
-      // Check if date-period is present and use that for range (e.g., this month)
       if (datePeriod.isNotEmpty) {
         final startDateStr = datePeriod['startDate'];
         final endDateStr = datePeriod['endDate'];
-
         startDate = DateTime.parse(startDateStr);
         endDate = DateTime.parse(endDateStr);
-        
         finalPrompt = "$finalPrompt from ${startDate.toLocal()} to ${endDate.toLocal()}";
-      }
-      // Check if date is provided for a specific date (e.g., yesterday)
-      else if (date.isNotEmpty) {
-        final specificDate = DateTime.parse(date); // Date for a specific day
+      } else if (date.isNotEmpty) {
+        final specificDate = DateTime.parse(date);
         startDate = specificDate;
         endDate = specificDate;
-
         finalPrompt = "$finalPrompt for ${startDate.toLocal()}";
       }
 
-      // Fetching expenses based on the dynamic startDate and endDate, then set the finalPrompt to expense summary + userPrompt
       if (startDate != null && endDate != null) {
-        try {
-          final uid = getCurrentUserID();
-          if (uid == null) throw Exception("User not logged in.");
+        final uid = getCurrentUserID();
+        if (uid == null) throw Exception("User not logged in.");
 
-          final summary = await fetchAndSummarizeExpenses(uid, startDate, endDate);
+        final summary = await fetchAndSummarizeExpenses(uid, startDate, endDate);
 
-          if (summary.isEmpty || summary.contains('No expense data')) {
-            _showError("No expense data available for the selected period.");
-            setState(() => _loading = false);
-            return;
-          }
-
-          finalPrompt = "$summary\n\n$userPrompt";  // <-- This lets Gemini infer intent
-
-        } catch (e) {
-          _showError(e.toString());
-          setState(() => _loading = false);
-          return;
+        if (summary.isEmpty || summary.contains('No expense data')) {
+          finalPrompt = "Explain in friendly: No record found in this date period.\n\n$userPrompt";
+        } else {
+          finalPrompt = "$summary\n\n$userPrompt";
         }
-}
-
-      // Add length instruction if not already present
-      if (!finalPrompt.toLowerCase().contains("short") &&
-          !finalPrompt.toLowerCase().contains("concise") &&
-          !finalPrompt.toLowerCase().contains("limit")) {
-        finalPrompt =
-          "Please reply in a friendly and energetic tone. "
-          "Start directly with the answer—do not use phrases like 'Based on...'. "
-          "If giving an expense review or budget recommendation, include specific values for each category. "
-          "Do not include the '*' symbol anywhere in the response. "
-          "Add a bit of elaboration, but keep it under 12 sentences.\n\n"
-          "$finalPrompt";
       }
+
+      logger.i("Final prompt: $finalPrompt");
       final response = await _chat.sendMessage(Content.text(finalPrompt));
       final String? text = response.text;
 
       if (text == null) {
-        _showError('No response from API.');
+        _showError('No response from Gemini model.');
         return;
       } else {
         setState(() {
@@ -306,85 +278,199 @@ class _AIPageState extends State<AIPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Gemini Chatbot'),
-      ),
-      body: Padding(
-        padding: const EdgeInsets.all(8.0),
-        child: Column(
-          children: <Widget>[
-            Expanded(
-              child: _apiKey.isNotEmpty
-                ? ListView.builder(
-                    controller: _scrollController,
-                    itemCount: _generatedContent.length,
-                    itemBuilder: (context, index) {
-                      final content = _generatedContent[index];
-                      return MessageWidget(
-                        text: content.text,
-                        image: content.image,
-                        isFromUser: content.fromUser,
-                      );
-                    },
-                  )
-                : const Center(
-                    child: Text("API Key not configured. Chat is disabled."),
-                  ),
+    double screenWidth = MediaQuery.of(context).size.width;
+    double iconSize = screenWidth * 0.08;
+    return PopScope(
+      canPop: false,
+      onPopInvoked: (didPop) {
+        if (!didPop) {
+          Navigator.pushAndRemoveUntil(
+            context,
+            PageRouteBuilder(
+              pageBuilder: (context, animation, secondaryAnimation) => const HomePage(),
+              transitionDuration: Duration.zero,
+              reverseTransitionDuration: Duration.zero,
             ),
-            if (_loading) const CircularProgressIndicator(),
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 25, horizontal: 15),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: TextField(
-                      controller: _textController,
-                      autofocus: true,
-                      decoration: InputDecoration(
-                        contentPadding: const EdgeInsets.all(15),
-                        hintText: 'Enter a prompt...',
-                        border: OutlineInputBorder(
-                          borderRadius: const BorderRadius.all(
-                            Radius.circular(14),
-                          ),
-                          borderSide: BorderSide(
-                            color: Theme.of(context).colorScheme.secondary,
-                          ),
-                        ),
-                        focusedBorder: OutlineInputBorder(
-                          borderRadius: const BorderRadius.all(
-                            Radius.circular(14),
-                          ),
-                          borderSide: BorderSide(
-                            color: Theme.of(context).colorScheme.secondary,
-                          ),
-                        ),
-                      ),
-                      onSubmitted: _apiKey.isNotEmpty ? (_) => _sendMessage() : null,
+            (route) => false,
+          );
+        }
+      },
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text('Chat with Sparx!'),
+          leading: IconButton(
+            icon: const Icon(
+              Icons.arrow_back,
+              color: Color.fromARGB(255, 165, 35, 226),
+            ),
+            onPressed: () {
+              Navigator.pushAndRemoveUntil(
+                context,
+                PageRouteBuilder(
+                  pageBuilder: (context, animation, secondaryAnimation) => const HomePage(),
+                  transitionDuration: Duration.zero,
+                  reverseTransitionDuration: Duration.zero,
+                ),
+                (route) => false,
+              );
+            },
+          ),
+        ),
+        body: Padding(
+          padding: const EdgeInsets.all(8.0),
+          child: Column(
+            children: <Widget>[
+              Expanded(
+                child: _apiKey.isNotEmpty
+                  ? ListView.builder(
+                      controller: _scrollController,
+                      itemCount: _generatedContent.length,
+                      itemBuilder: (context, index) {
+                        final content = _generatedContent[index];
+                        return MessageWidget(
+                          text: content.text,
+                          image: content.image,
+                          isFromUser: content.fromUser,
+                        );
+                      },
+                    )
+                  : const Center(
+                      child: Text("API Key not configured. Chat is disabled."),
                     ),
-                  ),
-                  const SizedBox.square(dimension: 15),
-                  if (!_loading)
+              ),
+              if (_loading) const CircularProgressIndicator(color: Color.fromARGB(255, 165, 35, 226)),
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 25, horizontal: 15),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: _textController,
+                        autofocus: true,
+                        decoration: InputDecoration(
+                          contentPadding: const EdgeInsets.all(15),
+                          hintText: 'How can I help you finance better?',
+                          border: OutlineInputBorder(
+                            borderRadius: const BorderRadius.all(Radius.circular(14)),
+                            borderSide: BorderSide(
+                              color: Theme.of(context).colorScheme.secondary,
+                            ),
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: const BorderRadius.all(Radius.circular(14)),
+                            borderSide: BorderSide(
+                              color: Theme.of(context).colorScheme.secondary,
+                            ),
+                          ),
+                        ),
+                        onSubmitted: _apiKey.isNotEmpty && !_loading ? (_) => _sendMessage() : null,
+                      ),
+                    ),
+                    const SizedBox.square(dimension: 15),
                     IconButton(
-                      onPressed: _apiKey.isNotEmpty ? _sendMessage : null,
+                      onPressed: _apiKey.isNotEmpty && !_loading ? _sendMessage : null,
                       icon: Icon(
                         Icons.send,
-                        color: Theme.of(context).colorScheme.primary,
+                        color: _loading ? Colors.grey : const Color.fromARGB(255, 165, 35, 226),
                       ),
-                    )
-                  else
-                    const CircularProgressIndicator(),
-                ],
+                    ),
+                  ],
+                )
               ),
-            ),
-          ],
+            ],
+          ),
+        ),
+        bottomNavigationBar: _buildBottomAppBar(context, iconSize),
+      ),
+    );
+  }
+
+  Widget _buildBottomAppBar(BuildContext context, double iconSize) {
+    double screenWidth = MediaQuery.of(context).size.width;
+    double iconSpacing = screenWidth * 0.14;
+
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        boxShadow: [
+          BoxShadow(
+            color: Colors.grey.withOpacity(0.2),
+            spreadRadius: 1,
+            blurRadius: 6,
+            offset: const Offset(0, -3),
+          ),
+        ],
+      ),
+      child: BottomAppBar(
+        height: 100,
+        elevation: 0,
+        color: Colors.transparent,
+        shape: const CircularNotchedRectangle(),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 0, vertical: 10),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              _buildNavIconWithCaption(context, "assets/icon/record-book.png", "Record", iconSize, const ExpenseRecordPage()),
+              SizedBox(width: iconSpacing),
+              _buildNavIconWithCaption(context, "assets/icon/budget.png", "Budget", iconSize, const BudgetPage()),
+              SizedBox(width: iconSpacing),
+              _buildNavIconWithCaption(context, "assets/icon/dataVisual.png", "Graphs", iconSize, const DataVisualPage()),
+              SizedBox(width: iconSpacing),
+              _buildNavIconWithCaption(context, "assets/icon/chatbot.png", "AI", iconSize, const AIPage(), textColor: Colors.deepPurple),
+            ],
+          ),
         ),
       ),
     );
   }
+
+  Widget _buildNavIconWithCaption(
+    BuildContext context,
+    String assetPath,
+    String caption,
+    double size,
+    Widget page, {
+    Color textColor = Colors.grey
+  }) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        GestureDetector(
+          onTap: () {
+            Navigator.push(
+              context,
+              PageRouteBuilder(
+                pageBuilder: (context, animation, secondaryAnimation) => page,
+                transitionDuration: Duration.zero,
+                reverseTransitionDuration: Duration.zero,
+              ),
+            );
+          },
+          child: SizedBox(
+            width: size,
+            height: size,
+            child: Image.asset(
+              assetPath,
+              fit: BoxFit.contain,
+            ),
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          caption,
+          style: TextStyle(
+            fontSize: 13,
+            color: textColor,
+          ),
+        ),
+      ],
+    );
+  }
 }
 
+// MessageWidget is a simple widget to display messages in the chat (Chat bubble)
 class MessageWidget extends StatelessWidget {
   final String? text;
   final Image? image;
@@ -409,15 +495,21 @@ class MessageWidget extends StatelessWidget {
             margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
             decoration: BoxDecoration(
               color: isFromUser
-                  ? Theme.of(context).colorScheme.primaryContainer
-                  : Theme.of(context).colorScheme.surfaceVariant,
+                  ? const Color.fromARGB(255, 165, 35, 226)
+                  : const Color.fromARGB(255, 239, 179, 236),
               borderRadius: BorderRadius.circular(12),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 if (image != null) image!,
-                if (text != null) Text(text!),
+                if (text != null)
+                  Text(
+                    text!,
+                    style: TextStyle(
+                      color: isFromUser ? Colors.white : Colors.black,
+                    ),
+                  ),
               ],
             ),
           ),

@@ -140,8 +140,34 @@ class _CategoriesManagerPageState extends State<CategoriesManagerPage> {
 
                               if (mounted) {
                                 _refreshCategories();
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(content: Text("Deleted '$categoryName'")),
+
+                                // Show dialog box with success message
+                                showDialog(
+                                  context: context,
+                                  builder: (context) {
+                                    return AlertDialog(
+                                      backgroundColor: const Color.fromARGB(255, 165, 35, 226),
+                                      title: const Text(
+                                        "Success",
+                                        style: TextStyle(color: Colors.white), 
+                                      ),
+                                      content: Text(
+                                        "Deleted '$categoryName' !",
+                                        style: const TextStyle(color: Colors.white), 
+                                      ),
+                                      actions: [
+                                        TextButton(
+                                          onPressed: () {
+                                            Navigator.of(context).pop();
+                                          },
+                                          child: const Text(
+                                            "OK",
+                                            style: TextStyle(color: Colors.white),
+                                          ),
+                                        ),
+                                      ],
+                                    );
+                                  },
                                 );
                               }
                             }

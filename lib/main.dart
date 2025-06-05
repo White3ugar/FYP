@@ -5,11 +5,12 @@ import 'package:flutter/material.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:workmanager/workmanager.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:logger/logger.dart';
 import 'home_page.dart'; 
 import 'register_page.dart';
 import 'notification.dart'; 
+import 'userPreference_page.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
-import 'package:logger/logger.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'dart:io'; // Import dart:io for platform checks
 
@@ -111,6 +112,35 @@ void callbackDispatcher() {
   });
 }
 
+Future<void> saveNotificationPreference() async {
+  final user = FirebaseAuth.instance.currentUser;
+  if (user == null) {
+    Logger().w("⚠️ Cannot save notification preference - user not logged in.");
+    return;
+  }
+
+  final docRef = FirebaseFirestore.instance.collection('notifications').doc(user.uid);
+
+  try {
+    final docSnapshot = await docRef.get();
+
+    // Check if allowNotification is explicitly false
+    if (docSnapshot.exists) {
+      final data = docSnapshot.data();
+      if (data != null && data['allowNotification'] == false) {
+        Logger().i("🔕 Notification preference is explicitly false — skipping update.");
+        return;
+      }
+    }
+
+    // Set allowNotification to true (or create it)
+    await docRef.set({'allowNotification': true}, SetOptions(merge: true));
+    Logger().i("✅ Notification preference set to true for user: ${user.uid}");
+  } catch (e) {
+    Logger().e("❌ Failed to save notification preference: $e");
+  }
+}
+
 void main() async {
   final logger = Logger();
   WidgetsFlutterBinding.ensureInitialized();
@@ -125,28 +155,35 @@ void main() async {
   logger.i("📌 Initializing Workmanager for notificationSender function");
   Workmanager().initialize(callbackDispatcher, isInDebugMode: false);
 
-  // Register one-off task for immediate execution (for debug)
-  // Workmanager().registerOneOffTask(
-  //   "testBudgetTask",
-  //   "testBudgetTask",
-  //   inputData: {
-  //     'uid': FirebaseAuth.instance.currentUser?.uid ?? '',
-  //   },
-  // );
-
   // 4. Register periodic background task
   final uid = FirebaseAuth.instance.currentUser?.uid;
   logger.i('🔍 Current user UID at line 139: $uid');
 
   if (uid != null && uid.isNotEmpty) {
-    Workmanager().registerPeriodicTask(
-      "checkBudgetTask",
-      "checkBudgetTask",
-      frequency: const Duration(hours: 1),
-      inputData: {'uid': uid},
-    );
+    final docRef = FirebaseFirestore.instance.collection('notifications').doc(uid);
+
+    try {
+      // Check if the user has allowed notifications
+      final docSnapshot = await docRef.get();
+      final allowNotification = docSnapshot.data()?['allowNotification'];
+
+      if (allowNotification == true) {
+        logger.i("🔔 Notifications allowed — registering background task");
+
+        Workmanager().registerPeriodicTask(
+          "checkBudgetTask",
+          "checkBudgetTask",
+          frequency: const Duration(hours: 1),
+          inputData: {'uid': uid},
+        );
+      } else {
+        logger.i("🔕 Notifications are disabled — skipping background task registration");
+      }
+    } catch (e) {
+      logger.e("❌ Error reading notification preferences: $e");
+    }
   } else {
-    logger.w('User not logged in; cannot register periodic task with UID');
+    logger.w('⚠️ User not logged in; cannot register periodic task');
   }
 
   // 5. Initialize local notifications
@@ -245,6 +282,39 @@ class LoginPageState extends State<LoginPage> {
     }
   }
 
+  Future<void> createPlanWithContents({
+    required CollectionReference planRef,
+    required String name,
+    required Duration duration,
+    required String userId,
+  }) async {
+    DateTime now = DateTime.now();
+
+    final planDocRef = await planRef.add({
+      'userID': userId,
+      'budgetPlanName': name,
+      'budgetPlanStart': now,
+      'budgetPlanEnd': now.add(duration),
+    });
+
+    final contentsRef = planDocRef.collection('budget_contents');
+
+    Map<String, num> defaultBudgetContents = {
+      'Grocery': 500,
+      'Transport': 200,
+      'Food': 150,
+    };
+
+    for (var entry in defaultBudgetContents.entries) {
+      await contentsRef.add({
+        'Category': entry.key,
+        'Amount': entry.value,
+        'Spent': 0,
+        'Remaining': entry.value,
+      });
+    }
+  }
+
   Future<void> _signInWithGoogle() async {
     try {
       setState(() {
@@ -334,68 +404,70 @@ class LoginPageState extends State<LoginPage> {
     // Ensure parent doc exists
     await userDocRef1.set({'userID': userId}, SetOptions(merge: true));
 
-    // Define default budget contents
-    Map<String, num> defaultBudgetContents = {
-      'Grocery': 500,
-      'Transport': 200,
-      'Food': 150,
-    };
-
-    // Function to create a plan and add default budget contents
-    Future<void> createPlanWithContents(CollectionReference planRef, String name, Duration duration) async {
-      DateTime now = DateTime.now();
-
-      final planDocRef = await planRef.add({
-        'userID': userId,
-        'budgetPlanName': name,
-        'budgetPlanStart': now,
-        'budgetPlanEnd': now.add(duration),
-      });
-
-      final contentsRef = planDocRef.collection('budget_contents');
-
-      for (var entry in defaultBudgetContents.entries) {
-        await contentsRef.add({
-          'Category': entry.key,
-          'Amount': entry.value,
-          'Spent': 0,
-          'Remaining': entry.value,
-        });
-      }
-    }
-
     // DAILY PLAN
     final dailyPlansRef = userDocRef1.collection('Daily');
     final dailySnapshot = await dailyPlansRef.limit(1).get();
     if (dailySnapshot.docs.isEmpty) {
-      await createPlanWithContents(dailyPlansRef, 'My First Daily Budget', const Duration(days: 1));
+      await createPlanWithContents(
+        planRef: dailyPlansRef,
+        name: 'My First Daily Budget',
+        duration: const Duration(days: 1),
+        userId: userId,
+      );
     }
 
     // WEEKLY PLAN
     final weeklyPlansRef = userDocRef1.collection('Weekly');
     final weeklySnapshot = await weeklyPlansRef.limit(1).get();
     if (weeklySnapshot.docs.isEmpty) {
-      await createPlanWithContents(weeklyPlansRef, 'My First Weekly Budget', const Duration(days: 7));
+      await createPlanWithContents(
+        planRef: weeklyPlansRef,
+        name: 'My First Weekly Budget',
+        duration: const Duration(days: 7),
+        userId: userId,
+      );
     }
 
     // MONTHLY PLAN
     final monthlyPlansRef = userDocRef1.collection('Monthly');
     final monthlySnapshot = await monthlyPlansRef.limit(1).get();
     if (monthlySnapshot.docs.isEmpty) {
-      await createPlanWithContents(monthlyPlansRef, 'My First Monthly Budget', const Duration(days: 30));
+      await createPlanWithContents(
+        planRef: monthlyPlansRef,
+        name: 'My First Monthly Budget',
+        duration: const Duration(days: 30),
+        userId: userId,
+      );
     }
 
     setState(() {
       _isLoading = false;
     });
 
-    // **Step 8: Navigate to the HomePage after successful sign-in**
-    Navigator.pushReplacement(
-      context,
-      MaterialPageRoute(builder: (context) => const HomePage()),
-    );
+    // **Step 8: Navigate to appropriate page based on user preferences**
+    final userDetailsSnapshot = await _firestore.collection('users').doc(user.uid).get();
+    final userData = userDetailsSnapshot.data();
+
+    if (!mounted) return;
+
+    setState(() {
+      _isLoading = false;
+    });
+
+    if (userData != null && userData.containsKey('occupation')) {
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (context) => const HomePage()), // Navigate to HomePage if occupation exists
+      );
+    } else {
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (context) => const UserPreferencesPage(fromPage: 'main')), // Navigate to UserPreferencesPage if occupation does not exist
+      );
+    }
     } catch (e) {
-      print("Google Sign-In error: $e");
+      final logger = Logger();
+      logger.e("Google Sign-In error: $e");
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text("Google Sign-In failed: ${e.toString()}")),
       );
@@ -423,12 +495,12 @@ class LoginPageState extends State<LoginPage> {
     final screenHeight = MediaQuery.of(context).size.height;
     return Scaffold(
       body: Center(
-        child: SingleChildScrollView( // Enables scrolling on small screens
+        child: SingleChildScrollView( 
           padding: const EdgeInsets.symmetric(horizontal: 16),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              SizedBox(height: screenHeight * 0.25), // Dynamic top spacing (10% of screen height)              
+              SizedBox(height: screenHeight * 0.25),      
               const Text(
                 'Sparx Financial Assistance',
                 style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
@@ -517,7 +589,7 @@ class LoginPageState extends State<LoginPage> {
                 },
                 child: const Text('Register Now!'),
               ),
-              SizedBox(height: screenHeight * 0.05), // Bottom spacing
+              SizedBox(height: screenHeight * 0.05),
             ],
           ),
         ),

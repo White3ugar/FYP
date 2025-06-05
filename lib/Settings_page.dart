@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
-import 'home_page.dart'; // Import the HomePage
-import 'settings_CategoriesManager.dart'; // Import the CategoriesManagerPage
-import 'settings_UserSettings.dart'; // Import the UserSettingsPage
+import 'home_page.dart';
+import 'settings_CategoriesManager.dart';
+import 'settings_UserSettings.dart'; 
+import 'userPreference_page.dart'; 
+import 'settings_Notification.dart';
 
 class SettingsPage extends StatelessWidget {
   const SettingsPage({super.key});
@@ -26,9 +28,9 @@ class SettingsPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color.fromARGB(255, 239, 179, 236), // solid background color
+      backgroundColor: const Color.fromARGB(255, 239, 179, 236), 
       appBar: AppBar(
-        backgroundColor: const Color.fromARGB(255, 239, 179, 236), // solid background color
+        backgroundColor: const Color.fromARGB(255, 239, 179, 236),
         title: const Text(
           "Settings",
           style: TextStyle(
@@ -101,10 +103,46 @@ class SettingsPage extends StatelessWidget {
             },
           ),
           buildSettingsTile(
+            title: "Preferences Settings",
+            onTap: () {
+              Navigator.push(
+                context,
+                PageRouteBuilder(
+                  pageBuilder: (context, animation, secondaryAnimation) =>
+                      const UserPreferencesPage(fromPage: 'setting'),
+                  transitionsBuilder: (context, animation, secondaryAnimation, child) {
+                    const begin = Offset(1.0, 0.0);
+                    const end = Offset.zero;
+                    const curve = Curves.easeInOut;
+
+                    var tween = Tween(begin: begin, end: end).chain(CurveTween(curve: curve));
+                    var offsetAnimation = animation.drive(tween);
+
+                    return SlideTransition(position: offsetAnimation, child: child);
+                  },
+                ),
+              );
+            },
+          ),
+          buildSettingsTile(
             title: "Notification Settings",
             onTap: () {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text("Notification Settings clicked")),
+              Navigator.push(
+                context,
+                PageRouteBuilder(
+                  pageBuilder: (context, animation, secondaryAnimation) =>
+                      const NotificationManagerPage(),
+                  transitionsBuilder: (context, animation, secondaryAnimation, child) {
+                    const begin = Offset(1.0, 0.0);
+                    const end = Offset.zero;
+                    const curve = Curves.easeInOut;
+
+                    var tween = Tween(begin: begin, end: end).chain(CurveTween(curve: curve));
+                    var offsetAnimation = animation.drive(tween);
+
+                    return SlideTransition(position: offsetAnimation, child: child);
+                  },
+                ),
               );
             },
           ),
