@@ -1,378 +1,602 @@
-import 'package:flutter/material.dart';
-import 'package:logger/logger.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-// import 'package:http/http.dart' as http;
-import 'package:googleapis_auth/auth_io.dart';
-import 'package:flutter/services.dart';
-import 'dart:convert';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/material.dart';
+import 'package:google_sign_in/google_sign_in.dart';
+import 'package:workmanager/workmanager.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:logger/logger.dart';
+import 'home_page.dart'; 
+import 'register_page.dart';
+import 'notification.dart'; 
+import 'userPreference_page.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:permission_handler/permission_handler.dart';
+import 'dart:io'; // Import dart:io for platform checks
 
-const String _apiKey = String.fromEnvironment('GEMINI_API_KEY');
 
-class DialogflowService {
-  final String projectId = 'fyp1-f09f5';
-  final String languageCode = 'en'; // or your preferred language
-    final Logger logger = Logger();
-
-  Future<Map<String, dynamic>> detectIntent(String query) async {
-    // Log the incoming query
-    logger.i("Sending query to Dialogflow: $query");
-
-    // Load service account credentials
-    final serviceAccountJson = await rootBundle.loadString('assets/credential/fyp1-f09f5-276ff280519c.json');
-    final credentials = ServiceAccountCredentials.fromJson(serviceAccountJson);
-
-    // Authorize using scopes required by Dialogflow
-    final client = await clientViaServiceAccount(
-      credentials,
-      ['https://www.googleapis.com/auth/cloud-platform'],
-    );
-
-    // Generate a unique session ID
-    final sessionId = DateTime.now().millisecondsSinceEpoch.toString();
-
-    final url = Uri.parse(
-      'https://dialogflow.googleapis.com/v2/projects/$projectId/agent/sessions/$sessionId:detectIntent',
-    );
-
-    final response = await client.post(
-      url,
-      headers: {'Content-Type': 'application/json; charset=utf-8'},
-      body: jsonEncode({
-        'queryInput': {
-          'text': {
-            'text': query,
-            'languageCode': languageCode,
-          }
-        }
-      }),
-    );
-
-    if (response.statusCode == 200) {
-      final json = jsonDecode(response.body);
-      logger.i("Dialogflow response: ${json['queryResult']['parameters']}");
-      return json['queryResult']['parameters'] ?? {};
-    } else {
-      logger.e("Dialogflow request failed: ${response.body}");
-      throw Exception('Dialogflow request failed: ${response.body}');
+Future<void> requestNotificationPermission() async {
+  if (Platform.isAndroid) {
+    if (await Permission.notification.isDenied ||
+        await Permission.notification.isPermanentlyDenied) {
+      await Permission.notification.request();
     }
   }
 }
 
-class AIPage extends StatefulWidget {
-  const AIPage({super.key});
+@pragma('vm:entry-point')
+void callbackDispatcher() {
+  final loggerr = Logger();
+  loggerr.i("📌 notificationSender initialized");
 
-  @override
-  State<AIPage> createState() => _AIPageState();
+  Workmanager().executeTask((taskName, inputData) async {
+    loggerr.i('✅ Workmanager background task triggered: $taskName');
+
+    await Firebase.initializeApp();
+    final firestore = FirebaseFirestore.instance;
+    final prefs = await SharedPreferences.getInstance();
+
+    final uid = inputData?['uid'] as String?;
+
+    loggerr.i('🔍 UID from inputData: $uid');
+
+    if (uid == null || uid.isEmpty) {
+      loggerr.w('⚠️ No UID provided in inputData. Skipping task.');
+      return true;
+    }
+
+    const budgetTypes = ['Daily', 'Weekly', 'Monthly'];
+
+    for (final type in budgetTypes) {
+      loggerr.i('Testing 1');
+      final budgetSnapshots = await firestore
+          .collection('budget_plans')
+          .doc(uid)
+          .collection(type)
+          .get();
+
+      for (final budgetDoc in budgetSnapshots.docs) {
+        loggerr.i('Testing 2');
+
+        final docData = budgetDoc.data();
+        final String? status = docData['budgetStatus'];
+
+        if (status != 'Active') {
+          loggerr.i('⏩ Skipping budget plan "${docData['budgetPlanName']}" because status is "$status"');
+          continue; // Skip this document
+        }
+
+        final budgetPlanName = docData['budgetPlanName'];
+        final contents = await budgetDoc.reference
+            .collection('budget_contents')
+            .get();
+
+        for (final categoryDoc in contents.docs) {
+          loggerr.i('Testing 3');
+          final data = categoryDoc.data();
+          final double amount = data['Amount']?.toDouble() ?? 0;
+          final double spent = data['Spent']?.toDouble() ?? 0;
+          final String category = data['Category'] ?? '';
+          final double threshold = amount * 0.8;
+
+          final flagKey = '${uid}_$type${budgetDoc.id}_${categoryDoc.id}_notified';
+
+          // For debugging: force flag to false
+          //await prefs.setBool(flagKey, false);
+
+          if (spent >= threshold) {
+            loggerr.i('Spent more than threshold, triggering notification sending');
+            final alreadyNotified = prefs.getBool(flagKey) ?? false;
+            loggerr.i('🔍 Notification flag for $category [$flagKey] = $alreadyNotified');
+
+            if (!alreadyNotified) {
+              final remaining = amount - spent;
+              await showNotification(
+                title: "Budget Alert",
+                body:
+                    'You have spent 80% for $category category under $type budget "$budgetPlanName", the remaining amount is RM ${remaining.toStringAsFixed(2)}',
+              );
+
+              loggerr.i('📣 Notification sent for $category in $type budget: $budgetPlanName');
+              await prefs.setBool(flagKey, true);
+            }
+          } else {
+            // Reset notification flag if spent goes below 80% again
+            await prefs.setBool(flagKey, false);
+          }
+        }
+      }
+    }
+
+    return true;
+  });
 }
 
-class _AIPageState extends State<AIPage> {
+Future<void> saveNotificationPreference() async {
+  final user = FirebaseAuth.instance.currentUser;
+  if (user == null) {
+    Logger().w("⚠️ Cannot save notification preference - user not logged in.");
+    return;
+  }
+
+  final docRef = FirebaseFirestore.instance.collection('notifications').doc(user.uid);
+
+  try {
+    final docSnapshot = await docRef.get();
+
+    // Check if allowNotification is explicitly false
+    if (docSnapshot.exists) {
+      final data = docSnapshot.data();
+      if (data != null && data['allowNotification'] == false) {
+        Logger().i("🔕 Notification preference is explicitly false — skipping update.");
+        return;
+      }
+    }
+
+    // Set allowNotification to true (or create it)
+    await docRef.set({'allowNotification': true}, SetOptions(merge: true));
+    Logger().i("✅ Notification preference set to true for user: ${user.uid}");
+  } catch (e) {
+    Logger().e("❌ Failed to save notification preference: $e");
+  }
+}
+
+void main() async {
   final logger = Logger();
+  WidgetsFlutterBinding.ensureInitialized();
 
-  final String _projectId = 'fyp1-f09f5'; 
-  final TextEditingController _textController = TextEditingController();
-  final ScrollController _scrollController = ScrollController();
-  bool _loading = false;
-  final List<({Image? image, String? text, bool fromUser})> _generatedContent = [];
+  // 1. Initialize Firebase
+  await Firebase.initializeApp();
 
-  // Initialize dialogflowService
-  final DialogflowService dialogflowService = DialogflowService(); 
+  // 2. Request notification permission for android > 13
+  await requestNotificationPermission();
 
-  @override
-  void initState() {
-    super.initState();
-    if (_apiKey.isNotEmpty) {
-      logger.i("Gemini API Key is set. Features will be enabled.");
-    } else {
-      logger.i("API Key is missing. Gemini features will be disabled.");
-    }
-  }
+  // 3. Initialize WorkManager (for background task)
+  logger.i("📌 Initializing Workmanager for notificationSender function");
+  Workmanager().initialize(callbackDispatcher, isInDebugMode: false);
 
-  String? getCurrentUserID() {
-    final user = FirebaseAuth.instance.currentUser;
-    return user?.uid;
-  }
+  // 4. Register periodic background task
+  final uid = FirebaseAuth.instance.currentUser?.uid;
+  logger.i('🔍 Current user UID at line 139: $uid');
 
-  String getMonthAbbreviation(DateTime date) {
-    const List<String> monthAbbreviations = [
-      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
-    ];
-    return monthAbbreviations[date.month - 1];
-  }
-
-  void _scrollToBottom() {
-    WidgetsBinding.instance.addPostFrameCallback(
-      (_) => _scrollController.animateTo(
-        _scrollController.position.maxScrollExtent,
-        duration: const Duration(milliseconds: 750),
-        curve: Curves.easeOutCirc,
-      ),
-    );
-  }
-
-  Future<String> fetchAndSummarizeExpenses(String userID, DateTime startDate, DateTime endDate) async {
-    final FirebaseFirestore firestore = FirebaseFirestore.instance;
-    final Map<String, double> categoryTotals = {};
-    double total = 0.0;
-
-    // Generate list of months between startDate and endDate
-    DateTime monthCursor = DateTime(startDate.year, startDate.month);
-    final DateTime endMonth = DateTime(endDate.year, endDate.month);
-
-    while (!monthCursor.isAfter(endMonth)) {
-      final String monthName = getMonthAbbreviation(monthCursor);
-      final monthDocRef = firestore.collection('expenses').doc(userID).collection('Months').doc(monthName);
-      logger.i("Fetching data for userID: $userID, month: $monthName");
-
-      final monthSnapshot = await monthDocRef.get();
-      if (!monthSnapshot.exists) {
-        logger.w("No data found for month: $monthName");
-        monthCursor = DateTime(monthCursor.year, monthCursor.month + 1);
-        continue;
-      }
-
-      final availableDates = List<String>.from(monthSnapshot.data()?['availableDates'] ?? []);
-      logger.i("Available dates in $monthName: $availableDates");
-
-      for (String dateStr in availableDates) {
-        final parts = dateStr.split('-');
-        if (parts.length != 3) continue;
-
-        final parsedDate = DateTime(
-          int.parse(parts[2]),
-          int.parse(parts[1]),
-          int.parse(parts[0]),
-        );
-
-        if (parsedDate.isAfter(startDate.subtract(const Duration(days: 1))) &&
-            parsedDate.isBefore(endDate.add(const Duration(days: 1)))) {
-          logger.i("Processing date: $dateStr");
-          final dayCollectionRef = monthDocRef.collection(dateStr);
-          final dayDocs = await dayCollectionRef.get();
-
-          if (dayDocs.docs.isEmpty) {
-            logger.w("No documents found for date: $dateStr");
-          }
-
-          for (var doc in dayDocs.docs) {
-            final data = doc.data();
-            final String category = data['category'] ?? 'Uncategorized';
-            final double amount = (data['amount'] as num?)?.toDouble() ?? 0.0;
-
-            logger.i("Fetched record - Date: $dateStr, Category: $category, Amount: RM${amount.toStringAsFixed(2)}");
-
-            categoryTotals[category] = (categoryTotals[category] ?? 0.0) + amount;
-            total += amount;
-          }
-        }
-      }
-
-      // Move to next month
-      monthCursor = DateTime(monthCursor.year, monthCursor.month + 1);
-    }
-
-    if (categoryTotals.isEmpty) {
-      return 'No expense data found for the given period.';
-    }
-
-    final buffer = StringBuffer('Expense summary for the period from $startDate to $endDate:\n');
-    categoryTotals.forEach((category, amt) {
-      buffer.writeln('- $category: RM${amt.toStringAsFixed(2)}');
-    });
-    buffer.writeln('Total: RM${total.toStringAsFixed(2)}');
-    return buffer.toString();
-  }
-
-  Future<void> _sendMessage() async {
-    if (_textController.text.isEmpty) return;
-
-    final String userPrompt = _textController.text;
-    _textController.clear();
-
-    setState(() {
-      _loading = true;
-      _generatedContent.add((image: null, text: userPrompt, fromUser: true));
-    });
-    _scrollToBottom();
+  if (uid != null && uid.isNotEmpty) {
+    final docRef = FirebaseFirestore.instance.collection('notifications').doc(uid);
 
     try {
-      // Load service account credentials
-      final serviceAccountJson = await rootBundle.loadString('assets/credential/fyp1-f09f5-e4debf32889d.json');
-      final credentials = ServiceAccountCredentials.fromJson(serviceAccountJson);
+      // Check if the user has allowed notifications
+      final docSnapshot = await docRef.get();
+      final allowNotification = docSnapshot.data()?['allowNotification'];
 
-      // Authorize using scopes required by Vertex AI
-      final client = await clientViaServiceAccount(
-        credentials,
-        ['https://www.googleapis.com/auth/cloud-platform'],
-      );
+      if (allowNotification == true) {
+        logger.i("🔔 Notifications allowed — registering background task");
 
-      // Setup the API endpoint for Vertex AI
-      final String endpoint =
-          'https://us-central1-aiplatform.googleapis.com/v1/projects/$_projectId/locations/us-central1/predict:predict';
-
-      // Define the request body (you can adjust the input format for your needs)
-      final body = jsonEncode({
-        'instances': [
-          {'content': userPrompt}  // Modify if Vertex AI requires specific input format
-        ]
-      });
-
-      // Send the request to Vertex AI
-      final response = await client.post(
-        Uri.parse(endpoint),
-        headers: {'Content-Type': 'application/json'},
-        body: body,
-      );
-
-      if (response.statusCode == 200) {
-        final jsonResponse = jsonDecode(response.body);
-
-        // Log and process the response from Vertex AI
-        logger.i("Vertex AI response: $jsonResponse");
-
-        // If there’s a response from the model, process and display the result
-        final String text = jsonResponse['predictions'][0] ?? "No response from AI model";
-        setState(() {
-          _generatedContent.add((image: null, text: text, fromUser: false));
-          _loading = false;
-        });
-        _scrollToBottom();
+        Workmanager().registerPeriodicTask(
+          "checkBudgetTask",
+          "checkBudgetTask",
+          frequency: const Duration(hours: 1),
+          inputData: {'uid': uid},
+        );
       } else {
-        throw Exception('Vertex AI request failed: ${response.body}');
+        logger.i("🔕 Notifications are disabled — skipping background task registration");
       }
     } catch (e) {
-      logger.e("Error while sending message: $e");
-      _showError(e.toString());
-      setState(() => _loading = false);
+      logger.e("❌ Error reading notification preferences: $e");
     }
+  } else {
+    logger.w('⚠️ User not logged in; cannot register periodic task');
   }
 
-  void _showError(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message)),
-    );
-  }
+  // 5. Initialize local notifications
+  const AndroidInitializationSettings initializationSettingsAndroid =
+      AndroidInitializationSettings('@mipmap/ic_launcher');
+
+  const InitializationSettings initializationSettings = InitializationSettings(android: initializationSettingsAndroid);
+
+  await flutterLocalNotificationsPlugin.initialize(initializationSettings);
+
+  // 6. Launch your app
+  runApp(const MyApp());
+}
+
+class MyApp extends StatelessWidget {
+  const MyApp({super.key});
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Gemini Chatbot'),
+    return MaterialApp(
+      title: 'Sparx Financial Assistance',
+      theme: ThemeData(
+        colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue),
+        useMaterial3: true,
       ),
-      body: Padding(
-        padding: const EdgeInsets.all(8.0),
-        child: Column(
-          children: <Widget>[
-            Expanded(
-              child: _apiKey.isNotEmpty
-                ? ListView.builder(
-                    controller: _scrollController,
-                    itemCount: _generatedContent.length,
-                    itemBuilder: (context, index) {
-                      final content = _generatedContent[index];
-                      return MessageWidget(
-                        text: content.text,
-                        image: content.image,
-                        isFromUser: content.fromUser,
-                      );
-                    },
-                  )
-                : const Center(
-                    child: Text("API Key not configured. Chat is disabled."),
-                  ),
-            ),
-            if (_loading) const CircularProgressIndicator(),
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 25, horizontal: 15),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: TextField(
-                      controller: _textController,
-                      autofocus: true,
-                      decoration: InputDecoration(
-                        contentPadding: const EdgeInsets.all(15),
-                        hintText: 'Enter a prompt...',
-                        border: OutlineInputBorder(
-                          borderRadius: const BorderRadius.all(
-                            Radius.circular(14),
-                          ),
-                          borderSide: BorderSide(
-                            color: Theme.of(context).colorScheme.secondary,
-                          ),
-                        ),
-                        focusedBorder: OutlineInputBorder(
-                          borderRadius: const BorderRadius.all(
-                            Radius.circular(14),
-                          ),
-                          borderSide: BorderSide(
-                            color: Theme.of(context).colorScheme.secondary,
-                          ),
-                        ),
-                      ),
-                      onSubmitted: _apiKey.isNotEmpty ? (_) => _sendMessage() : null,
-                    ),
-                  ),
-                  const SizedBox.square(dimension: 15),
-                  if (!_loading)
-                    IconButton(
-                      onPressed: _apiKey.isNotEmpty ? _sendMessage : null,
-                      icon: Icon(
-                        Icons.send,
-                        color: Theme.of(context).colorScheme.primary,
-                      ),
-                    )
-                  else
-                    const CircularProgressIndicator(),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
+      home: const AuthWrapper(), // Widget to check auth
     );
   }
 }
 
-class MessageWidget extends StatelessWidget {
-  final String? text;
-  final Image? image;
-  final bool isFromUser;
-
-  const MessageWidget({
-    super.key,
-    this.text,
-    this.image,
-    required this.isFromUser,
-  });
+class AuthWrapper extends StatelessWidget {
+  const AuthWrapper({super.key});
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      mainAxisAlignment: isFromUser ? MainAxisAlignment.end : MainAxisAlignment.start,
-      children: [
-        Flexible(
-          child: Container(
-            constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.75),
-            padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 15),
-            margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
-            decoration: BoxDecoration(
-              color: isFromUser
-                  ? Theme.of(context).colorScheme.primaryContainer
-                  : Theme.of(context).colorScheme.surfaceVariant,
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                if (image != null) image!,
-                if (text != null) Text(text!),
-              ],
-            ),
+    final user = FirebaseAuth.instance.currentUser;
+
+    if (user != null) {
+      return const HomePage(); // ✅ Already logged in
+    } else {
+      return const LoginPage(); // ❌ Not logged in yet
+    }
+  }
+}
+
+class LoginPage extends StatefulWidget {
+  const LoginPage({super.key});
+
+  @override
+  LoginPageState createState() => LoginPageState();
+}
+
+class LoginPageState extends State<LoginPage> {
+  final TextEditingController _emailController = TextEditingController();
+  final TextEditingController _passwordController = TextEditingController();
+  final FirebaseAuth _auth = FirebaseAuth.instance;
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+
+  final GoogleSignIn _googleSignIn = GoogleSignIn();
+  bool _isLoading = false;
+
+  Future<void> _signInWithEmail() async {
+    try {
+      UserCredential userCredential = await _auth.signInWithEmailAndPassword(
+        email: _emailController.text.trim(),
+        password: _passwordController.text.trim(),
+      );
+
+      User? user = userCredential.user;
+      if (user != null) {
+        
+        if(!mounted)  return; // Check if the widget is still mounted
+
+        if (user.emailVerified) {
+          // ✅ Navigate to HomePage if email is verified
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(builder: (context) => const HomePage()),
+          );
+        } else {
+          // ❌ Show alert if email is NOT verified
+          _showAlertDialog("Email Not Verified", "Please verify your email before logging in");
+        }
+      }
+    } on FirebaseAuthException catch (e) {
+      String errorMessage = "Login Failed. Please try again.";
+
+      if (e.code == "wrong-password" || e.code == "invalid-credential") {
+        errorMessage = "Wrong Password or Email Address";
+      } else if (e.code == "user-not-found") {
+        errorMessage = "No account found for this Email Address";
+      } else if (e.code == "too-many-requests") {
+        errorMessage = "Too many login attempts. Try again later.";
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(errorMessage)),
+      );
+    }
+  }
+
+  Future<void> createPlanWithContents({
+    required CollectionReference planRef,
+    required String name,
+    required Duration duration,
+    required String userId,
+  }) async {
+    DateTime now = DateTime.now();
+
+    final planDocRef = await planRef.add({
+      'userID': userId,
+      'budgetPlanName': name,
+      'budgetPlanStart': now,
+      'budgetPlanEnd': now.add(duration),
+    });
+
+    final contentsRef = planDocRef.collection('budget_contents');
+
+    Map<String, num> defaultBudgetContents = {
+      'Grocery': 500,
+      'Transport': 200,
+      'Food': 150,
+    };
+
+    for (var entry in defaultBudgetContents.entries) {
+      await contentsRef.add({
+        'Category': entry.key,
+        'Amount': entry.value,
+        'Spent': 0,
+        'Remaining': entry.value,
+      });
+    }
+  }
+
+  Future<void> _signInWithGoogle() async {
+    try {
+      setState(() {
+      _isLoading = true;
+    });
+
+    // **Step 1: Trigger the Google Sign-In flow**
+    final GoogleSignInAccount? googleUser = await _googleSignIn.signIn();
+
+    if (googleUser == null) {
+      setState(() {
+        _isLoading = false;
+      });
+      return;
+    }
+
+    // **Step 2: Get the Google authentication details**
+    final GoogleSignInAuthentication googleAuth = await googleUser.authentication;
+
+    // **Step 3: Create a new credential using the authentication tokens**
+    final AuthCredential credential = GoogleAuthProvider.credential(
+      accessToken: googleAuth.accessToken,
+      idToken: googleAuth.idToken,
+    );
+
+    // **Step 4: Sign in to Firebase with the Google credentials**
+    UserCredential userCredential = await _auth.signInWithCredential(credential);
+    User? user = userCredential.user;
+
+    if (user == null) {
+      throw Exception("User creation failed.");
+    }
+
+    // **Step 5: Save the user info into Firestore only if not exists**
+    DocumentReference userDocRef = _firestore.collection('users').doc(user.uid);
+    DocumentSnapshot userSnapshot = await userDocRef.get();
+
+    if (!userSnapshot.exists) {
+      await userDocRef.set({
+        'email': user.email,
+        'username': googleUser.displayName ?? "Unnamed",
+        'createdAt': FieldValue.serverTimestamp(),
+      });
+    }
+
+    // **Step 6: Create default categories (Income & Expense) only if not exists**
+    DocumentReference userCategoriesRef = _firestore.collection('Categories').doc(user.uid);
+    DocumentSnapshot categoriesSnapshot = await userCategoriesRef.get();
+
+    if (!categoriesSnapshot.exists) {
+      await userCategoriesRef.set({'userID': user.uid});
+
+      CollectionReference transactionCategoriesRef = userCategoriesRef.collection('Transaction Categories');
+
+      // Define income and expense categories with icon paths
+      List<Map<String, String>> incomeCategories = [
+        {'name': 'Deposit', 'icon': 'assets/icon/deposit.png'},
+        {'name': 'Salary', 'icon': 'assets/icon/salary.png'},
+        {'name': 'Invests', 'icon': 'assets/icon/invest.png'},
+      ];
+
+      List<Map<String, String>> expenseCategories = [
+        {'name': 'Food', 'icon': 'assets/icon/food.png'},
+        {'name': 'Drink', 'icon': 'assets/icon/drink.png'},
+        {'name': 'Transport', 'icon': 'assets/icon/transport.png'},
+        {'name': 'Loan', 'icon': 'assets/icon/loan.png'},
+        {'name': 'Sport', 'icon': 'assets/icon/sport.png'},
+        {'name': 'Education', 'icon': 'assets/icon/book.png'},
+        {'name': 'Medical', 'icon': 'assets/icon/medical.png'},
+        {'name': 'Electronics', 'icon': 'assets/icon/monitor.png'},
+        {'name': 'Grocery', 'icon': 'assets/icon/grocery.png'},
+      ];
+
+      await transactionCategoriesRef.doc('Income categories').set({
+        'categoryNames': incomeCategories,
+      });
+
+      await transactionCategoriesRef.doc('Expense categories').set({
+        'categoryNames': expenseCategories,
+      });
+    }
+
+    // **Step 7: Create a default budget plan only if not exists**
+    final userId = user.uid;
+    final userDocRef1 = _firestore.collection('budget_plans').doc(userId);
+
+    // Ensure parent doc exists
+    await userDocRef1.set({'userID': userId}, SetOptions(merge: true));
+
+    // DAILY PLAN
+    final dailyPlansRef = userDocRef1.collection('Daily');
+    final dailySnapshot = await dailyPlansRef.limit(1).get();
+    if (dailySnapshot.docs.isEmpty) {
+      await createPlanWithContents(
+        planRef: dailyPlansRef,
+        name: 'My First Daily Budget',
+        duration: const Duration(days: 1),
+        userId: userId,
+      );
+    }
+
+    // WEEKLY PLAN
+    final weeklyPlansRef = userDocRef1.collection('Weekly');
+    final weeklySnapshot = await weeklyPlansRef.limit(1).get();
+    if (weeklySnapshot.docs.isEmpty) {
+      await createPlanWithContents(
+        planRef: weeklyPlansRef,
+        name: 'My First Weekly Budget',
+        duration: const Duration(days: 7),
+        userId: userId,
+      );
+    }
+
+    // MONTHLY PLAN
+    final monthlyPlansRef = userDocRef1.collection('Monthly');
+    final monthlySnapshot = await monthlyPlansRef.limit(1).get();
+    if (monthlySnapshot.docs.isEmpty) {
+      await createPlanWithContents(
+        planRef: monthlyPlansRef,
+        name: 'My First Monthly Budget',
+        duration: const Duration(days: 30),
+        userId: userId,
+      );
+    }
+
+    setState(() {
+      _isLoading = false;
+    });
+
+    // **Step 8: Navigate to appropriate page based on user preferences**
+    final userDetailsSnapshot = await _firestore.collection('users').doc(user.uid).get();
+    final userData = userDetailsSnapshot.data();
+
+    if (!mounted) return;
+
+    setState(() {
+      _isLoading = false;
+    });
+
+    if (userData != null && userData.containsKey('occupation')) {
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (context) => const HomePage()), // Navigate to HomePage if occupation exists
+      );
+    } else {
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (context) => const UserPreferencesPage(fromPage: 'main')), // Navigate to UserPreferencesPage if occupation does not exist
+      );
+    }
+    } catch (e) {
+      final logger = Logger();
+      logger.e("Google Sign-In error: $e");
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Google Sign-In failed: ${e.toString()}")),
+      );
+    }
+  }
+
+  void _showAlertDialog(String title, String message) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(title),
+        content: Text(message),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text("OK"),
+          ),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final screenHeight = MediaQuery.of(context).size.height;
+    return Scaffold(
+      body: Center(
+        child: SingleChildScrollView( 
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              SizedBox(height: screenHeight * 0.25),      
+              const Text(
+                'Sparx Financial Assistance',
+                style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 10),
+              const Text(
+                'Welcome',
+                style: TextStyle(fontSize: 20, fontWeight: FontWeight.w500),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 40),
+
+              // Email field
+              TextField(
+                controller: _emailController,
+                decoration: InputDecoration(
+                  labelText: 'Email',
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 20),
+
+              // Password field
+              TextField(
+                controller: _passwordController,
+                obscureText: true,
+                decoration: InputDecoration(
+                  labelText: 'Password',
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 20),
+
+              ElevatedButton(
+                onPressed: _signInWithEmail,
+                child: const Text('Login'),
+              ),
+
+              const SizedBox(height: 50),
+              const Row(
+                children: [
+                  Expanded(child: Divider(thickness: 1)),
+                  Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 8.0),
+                    child: Text(
+                      'Or Continue With',
+                      style: TextStyle(fontSize: 15, fontWeight: FontWeight.w500),
+                    ),
+                  ),
+                  Expanded(child: Divider(thickness: 1)),
+                ],
+              ),
+
+              const SizedBox(height: 25),
+              // Google Sign-In button
+              _isLoading
+                ? const CircularProgressIndicator()
+                : ElevatedButton(
+                    onPressed: _signInWithGoogle,
+                    style: ElevatedButton.styleFrom(
+                      padding: const EdgeInsets.all(12.0),
+                      shape: const CircleBorder(),
+                      backgroundColor: Colors.white,
+                      elevation: 3,
+                    ),
+                    child: Image.asset(
+                      'assets/icon/google.png',
+                      height: 30,
+                      width: 30,
+                    ),
+                  ),
+
+              const SizedBox(height: 80),
+              const Text('First Time User?'),
+              TextButton(
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (context) => const RegisterPage()),
+                  );
+                },
+                child: const Text('Register Now!'),
+              ),
+              SizedBox(height: screenHeight * 0.05),
+            ],
           ),
         ),
-      ],
+      ),
     );
   }
 }

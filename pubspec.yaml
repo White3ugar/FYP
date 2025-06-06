@@ -31,19 +31,22 @@ dependencies:
   flutter:
     sdk: flutter
   logger: ^1.0.0 # Logger package for logging messages
-  google_sign_in: ^6.1.6 # Google Sign In package
   dropdown_button2: ^2.3.9 # Dropdown button with search functionality
-  fl_chart: ^0.64.0 # Charting library for data visualization
-  intl: ^0.18.1 # Date and time formatting
-  smooth_page_indicator: ^1.1.0 # Page indicator for smooth transitions between pages
   google_generative_ai: ^0.4.7 # Google Generative AI package for AI features
-  http: ^1.1.0 # HTTP package for making network requests
+  google_sign_in: ^6.1.6 # Google Sign In package
   googleapis_auth: ^1.4.0 # Google APIs authentication package
+  http: ^1.1.0 # HTTP package for making network requests
+  image_picker: ^1.0.4 # Image picker package for selecting images from the gallery or camera
+  intl: ^0.18.1 # Date and time formatting
   firebase_vertexai: 0.2.3+1
+  fl_chart: ^0.64.0 # Charting library for data visualization
   flutter_local_notifications: ^16.1.0 # Local notifications package for scheduling and displaying notifications
-  workmanager: ^0.5.2 # Workmanager package for background tasks
-  shared_preferences: ^2.2.2 # Shared preferences package for storing simple key-value pairs
+  flutter_datetime_picker_plus: ^2.0.1 # Date and time picker package for selecting dates and times
   permission_handler: ^11.0.0 # Permission handler package for managing app permissions
+  shared_preferences: ^2.2.2 # Shared preferences package for storing simple key-value pairs
+  smooth_page_indicator: ^1.1.0 # Page indicator for smooth transitions between pages
+  supabase_flutter: ^1.10.18 # Supabase Flutter package for backend services
+  workmanager: ^0.5.2 # Workmanager package for background tasks
 
   # The following adds the Cupertino Icons font to your application.
   # Use with the CupertinoIcons class for iOS style icons.

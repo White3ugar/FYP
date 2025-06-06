@@ -8,6 +8,9 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:logger/logger.dart';
 import 'package:dropdown_button2/dropdown_button2.dart';
 import 'package:workmanager/workmanager.dart';
+import 'package:flutter_datetime_picker_plus/flutter_datetime_picker_plus.dart' as picker;
+import 'package:image_picker/image_picker.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 class ExpenseRecordPage extends StatefulWidget {
   const ExpenseRecordPage({super.key});
@@ -27,6 +30,8 @@ class _ExpenseRecordPageState extends State<ExpenseRecordPage> {
   List<String> budgetPlans = []; // Store all budget plans for the user
   List<String> selectedBudgetPlans = []; // Store selected budget plans
   String selectedRepeat = 'None'; // Default repeat option
+  final SupabaseClient supabase = Supabase.instance.client;
+  XFile? _pickedImage;
 
   late Future<DocumentSnapshot> _incomeCategoriesFuture; 
   late Future<DocumentSnapshot> _expenseCategoriesFuture;
@@ -243,6 +248,13 @@ class _ExpenseRecordPageState extends State<ExpenseRecordPage> {
     }
 
     try {
+      //Register a one-off task to check budget thresholds
+       Workmanager().registerOneOffTask(
+          "ExpenseRepeatTransactionsTask",
+          "checkRecurringTransactions",
+          inputData: {'uid': uid},
+        );
+
       final docSnapshot = await FirebaseFirestore.instance
           .collection('notifications')
           .doc(uid)
@@ -255,7 +267,7 @@ class _ExpenseRecordPageState extends State<ExpenseRecordPage> {
 
         Workmanager().registerOneOffTask(
           "expenseBudgetTask",
-          "expenseCheckBudgetTask",
+          "checkBudgetThresholds",
           inputData: {'uid': uid},
         );
       } else {
@@ -268,6 +280,7 @@ class _ExpenseRecordPageState extends State<ExpenseRecordPage> {
 
   // Record transaction (income or expense)
   Future<void> _recordTransaction(bool isIncome) async {
+    String? imageUrl;
     // Check if the user has selected a category and entered an amount
     if (selectedCategory.isEmpty || amountController.text.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -313,6 +326,31 @@ class _ExpenseRecordPageState extends State<ExpenseRecordPage> {
 
     _showLoadingDialog(isIncome ? "Recording income..." : "Recording expense...");
 
+    // If an image is picked, upload it to Supabase storage
+    if (_pickedImage != null) {
+      try {
+        final fileBytes = await _pickedImage!.readAsBytes();
+        final fileName = '${DateTime.now().millisecondsSinceEpoch}_${_pickedImage!.name}';
+
+        final storageResponse = await supabase.storage
+          .from('transaction-images')
+          .uploadBinary(
+            fileName,
+            fileBytes,
+            fileOptions: const FileOptions(
+              upsert: true,
+              contentType: 'image/jpeg',
+            ),
+          );
+
+        // Generate public URL
+        imageUrl = supabase.storage.from('transaction-images').getPublicUrl(fileName);
+        logger.i("Image uploaded: $imageUrl");
+      } catch (e) {
+        logger.e("Failed to upload image: $e");
+      }
+    }
+
     // Record the transaction in Firestore
     try {
       double amount = double.parse(amountController.text);
@@ -329,6 +367,7 @@ class _ExpenseRecordPageState extends State<ExpenseRecordPage> {
         'category': selectedCategory,
         'description': descriptionController.text,
         'date': currentDate,
+        'imageUrl': imageUrl,
       };
 
       // Add budget plans only if it's an expense
@@ -416,7 +455,9 @@ class _ExpenseRecordPageState extends State<ExpenseRecordPage> {
         isIncome ? 'incomes' : 'expenses': FieldValue.arrayUnion([transactionRef.id]),
       });
 
-       if (!mounted) return; // Check if the widget is still mounted before calling setState
+      triggerBudgetBackgroundTask(); // Call background task for notifications and check recurring transactions
+
+      if (!mounted) return; // Check if the widget is still mounted before calling setState
 
       if (mounted) {
         setState(() {
@@ -428,6 +469,7 @@ class _ExpenseRecordPageState extends State<ExpenseRecordPage> {
         }
 
       if (mounted) {
+
         Navigator.pop(context); // Close the current screen first
         // Show success dialog for recording income or expense
         showDialog(
@@ -451,7 +493,6 @@ class _ExpenseRecordPageState extends State<ExpenseRecordPage> {
               TextButton(
                 onPressed: () {
                   Navigator.of(context).pop(); 
-                  triggerBudgetBackgroundTask(); // Call background task for notifications
                 },
                 child: const Text(
                   'OK',
@@ -469,6 +510,17 @@ class _ExpenseRecordPageState extends State<ExpenseRecordPage> {
           SnackBar(content: Text("Failed to record ${isIncome ? 'income' : 'expense'}: ${e.toString()}")),
         );
       }
+    }
+  }
+
+  Future<void> _pickImage() async {
+    final picker = ImagePicker();
+    final picked = await picker.pickImage(source: ImageSource.gallery);
+    if (picked != null) {
+      setState(() {
+        _pickedImage = picked;
+      });
+      logger.i('Image selected: ${picked.path}');
     }
   }
 
@@ -609,7 +661,7 @@ class _ExpenseRecordPageState extends State<ExpenseRecordPage> {
                           _buildAmountInputField("Amount", amountController, TextInputType.number),
                           _buildRepeatDropdown(),
                           _buildDatePicker(context),
-                          _buildDescriptionInputField("Description", descriptionController, TextInputType.text),
+                          _buildDescriptionInputField("Description", descriptionController, TextInputType.text, _pickImage),
                           const SizedBox(height: 10),
                           isSubmitting
                               ? const Center(child: CircularProgressIndicator(color: Color.fromARGB(255, 165, 35, 226)))
@@ -1028,23 +1080,29 @@ class _ExpenseRecordPageState extends State<ExpenseRecordPage> {
         children: [
           const Text(
             "Date",
-            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16,color: Color.fromARGB(255, 165, 35, 226)),
+            style: TextStyle(
+              fontWeight: FontWeight.bold,
+              fontSize: 16,
+              color: Color.fromARGB(255, 165, 35, 226),
+            ),
           ),
           const SizedBox(width: 20),
           Expanded(
             child: Align(
               alignment: Alignment.centerRight,
               child: GestureDetector(
-                onTap: () async {
-                  DateTime? pickedDate = await showDatePicker(
-                    context: context,
-                    initialDate: selectedDate,
-                    firstDate: DateTime(2000),
-                    lastDate: DateTime(2100),
+                onTap: () {
+                  picker.DatePicker.showDateTimePicker(
+                    context,
+                    showTitleActions: true,
+                    minTime: DateTime(2000),
+                    maxTime: DateTime(2100),
+                    currentTime: selectedDate,
+                    locale: picker.LocaleType.en,
+                    onConfirm: (DateTime pickedDateTime) {
+                      setState(() => selectedDate = pickedDateTime);
+                    },
                   );
-                  if (pickedDate != null) {
-                    setState(() => selectedDate = pickedDate);
-                  }
                 },
                 child: SizedBox(
                   width: datePickerWidth,
@@ -1059,7 +1117,10 @@ class _ExpenseRecordPageState extends State<ExpenseRecordPage> {
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         Text(
-                          "${selectedDate.day} ${_getMonthAbbreviation(selectedDate.month)} ${selectedDate.year}",
+                          "${selectedDate.day.toString().padLeft(2, '0')} "
+                          "${_getMonthAbbreviation(selectedDate.month)} "
+                          "${selectedDate.year} "
+                          "${selectedDate.hour.toString().padLeft(2, '0')}:${selectedDate.minute.toString().padLeft(2, '0')}",
                           style: const TextStyle(
                             fontSize: 16,
                             color: Color.fromARGB(255, 165, 35, 226),
@@ -1078,28 +1139,49 @@ class _ExpenseRecordPageState extends State<ExpenseRecordPage> {
     );
   }
 
-  Widget _buildDescriptionInputField(String label, TextEditingController controller, TextInputType keyboardType) {
+  Widget _buildDescriptionInputField(
+    String label,
+    TextEditingController controller,
+    TextInputType keyboardType,
+    VoidCallback onImagePick, // Pass a function to pick image
+  ) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 8),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            label,
-            style: const TextStyle(
-              fontWeight: FontWeight.bold,
-              fontSize: 16,
-              color: Color.fromARGB(255, 165, 35, 226),
-            ),
+          // Row containing label and image button
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                label,
+                style: const TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 16,
+                  color: Color.fromARGB(255, 165, 35, 226),
+                ),
+              ),
+              TextButton(
+                onPressed: onImagePick,
+                child: const Text(
+                  "Add Image",
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: Color.fromARGB(255, 165, 35, 226),
+                    decoration: TextDecoration.underline, 
+                  ),
+                ),
+              ),
+            ],
           ),
-          const SizedBox(height: 15),
           TextField(
             controller: controller,
             keyboardType: keyboardType,
-            cursorColor: const Color.fromARGB(255, 165, 35, 226), // Cursor color
+            cursorColor: const Color.fromARGB(255, 165, 35, 226),
             maxLines: null,
             minLines: 3,
-            style: const TextStyle( 
+            style: const TextStyle(
               color: Color.fromARGB(255, 165, 35, 226),
               fontSize: 16,
             ),
@@ -1114,7 +1196,7 @@ class _ExpenseRecordPageState extends State<ExpenseRecordPage> {
               focusedBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(20),
                 borderSide: const BorderSide(
-                  color: Color.fromARGB(255, 165, 35, 226), // Focus border color
+                  color: Color.fromARGB(255, 165, 35, 226),
                   width: 2,
                 ),
               ),

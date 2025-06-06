@@ -2,15 +2,16 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:logger/logger.dart';
+import 'package:fl_chart/fl_chart.dart';
+import 'package:intl/intl.dart';
+import 'package:smooth_page_indicator/smooth_page_indicator.dart';
 import 'main.dart';
 import 'ai_page.dart';
 import 'budgeting_page.dart';
 import 'expenseRecord_page.dart';
 import 'dataVisual_page.dart';
 import 'settings_page.dart'; 
-import 'package:fl_chart/fl_chart.dart';
-import 'package:intl/intl.dart';
-import 'package:smooth_page_indicator/smooth_page_indicator.dart';
+import 'transaction_details_page.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -50,7 +51,7 @@ class HomePageState extends State<HomePage> {
     super.initState();
     _fetchUsername();
     _fetchExpenseIncomeForCurrentMonth();  // Fetch both monthly expense and income
-    checkAndRepeatTransactions(); // Check and repeat transactions
+    _fetchExpensesSummary(); // Check and repeat transactions
   }
 
   @override
@@ -106,11 +107,9 @@ class HomePageState extends State<HomePage> {
         fieldName: 'Monthly_Expense',
       ).then((value) {
         if (!mounted) return;
-        if (mounted) {
-          setState(() {
+        setState(() {
             monthlyExpense = value;
           });
-        }
       }),
       _fetchMonthlyData(
         userId: userId,
@@ -172,7 +171,8 @@ class HomePageState extends State<HomePage> {
 
     final now = DateTime.now();
     final formattedMonth = DateFormat('MMM').format(now); // e.g., Apr
-    final formattedDate = DateFormat('d-MM-yyyy').format(now); // e.g., 20-04-2025
+    final formattedDate = DateFormat('dd-MM-yyyy').format(now); // e.g., 20-04-2025
+    logger.i("Fetching today's expenses and incomes for user: ${user.uid}, Month: $formattedMonth, Date: $formattedDate");
 
     double expenseTotal = 0.0;
     double incomeTotal = 0.0;
@@ -192,7 +192,12 @@ class HomePageState extends State<HomePage> {
     for (var doc in expenseSnapshot.docs) {
       double amount = (doc['amount'] as num).toDouble();
       String category = doc['category'] ?? 'Unknown';
+      String docID = doc.id;
+
+      logger.i("Fetched expense - Category: $category, Amount: $amount");
+
       todayFetchedExpenses.add({
+        'docID': docID,
         'category': category,
         'amount': amount,
       });
@@ -212,7 +217,10 @@ class HomePageState extends State<HomePage> {
     for (var doc in incomeSnapshot.docs) {
       double amount = (doc['amount'] as num).toDouble();
       String category = doc['category'] ?? 'Unknown';
+      String docID = doc.id;
+
       todayFetchedIncomes.add({
+        'docID': docID,
         'category': category,
         'amount': amount,
       });
@@ -230,7 +238,7 @@ class HomePageState extends State<HomePage> {
     }  
   }
 
-    // Helper function to get month name abbreviation
+  // Helper function to get month name abbreviation
   String _getMonthAbbreviation(int monthNumber) {
     const monthAbbreviations = [
       'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
@@ -239,15 +247,12 @@ class HomePageState extends State<HomePage> {
     return monthAbbreviations[monthNumber - 1];
   }
 
-  // Function to check and repeat transactions
-  // This function checks for recurring transactions and creates new ones if needed
-  Future<void> checkAndRepeatTransactions() async {
+  Future<void> _fetchExpensesSummary() async {
     final user = _auth.currentUser;
     if (user == null) return;
 
     final userId = user.uid;
     final today = DateTime.now();
-    final oriDate = today;
 
     try {
       if (!mounted) return;
@@ -255,134 +260,26 @@ class HomePageState extends State<HomePage> {
         isLoading = true;
       });
 
-      // Get recurring transactions for both income and expense
-      final incomeRecurringSnapshot = await _firestore
-          .collection('incomes')
-          .doc(userId)
-          .collection('Recurring')
-          .get();
-
-      final expenseRecurringSnapshot = await _firestore
-          .collection('expenses')
-          .doc(userId)
-          .collection('Recurring')
-          .get();
-
-      // Combine both snapshots
-      final combinedRecurringDocs = [
-        ...incomeRecurringSnapshot.docs
-            .map((doc) => {'doc': doc, 'type': 'incomes'}),
-        ...expenseRecurringSnapshot.docs
-            .map((doc) => {'doc': doc, 'type': 'expenses'}),
-      ];
-
-      for (var entry in combinedRecurringDocs) {
-        final recurringTransactionDoc = entry['doc'] as QueryDocumentSnapshot; // Document reference
-        final recurringTransactionDataFields = recurringTransactionDoc.data() as Map<String, dynamic>?; // Data map
-
-        if (recurringTransactionDataFields == null) continue; // skip if data is null
-
-        final repeatType = recurringTransactionDataFields['repeat'];
-        final lastRepeated = recurringTransactionDataFields['lastRepeated'];
-        final description = recurringTransactionDataFields['description'];
-        final List<String> selectedBudgetPlans = recurringTransactionDataFields['budgetPlans'] != null
-            ? List<String>.from(recurringTransactionDataFields['budgetPlans'])
-            : [];
-
-        if (repeatType == 'None' || repeatType == null || lastRepeated == null) {
-          continue;
-        }
-
-        final lastRepeatedDate = (lastRepeated is Timestamp)
-            ? lastRepeated.toDate()
-            : DateTime.tryParse(lastRepeated.toString()) ?? today;
-
-        // Calculate the total number of days since the last repeated date
-        int daysDifference = today.difference(lastRepeatedDate).inDays;
-
-        // Loop over the days to repeat transactions for each missed day
-        for (int i = 1; i <= daysDifference; i++) {
-          final dateToRepeat = lastRepeatedDate.add(Duration(days: i));
-
-          // Determine if the transaction should repeat on this day
-          bool shouldRepeat = false;
-          if (repeatType == 'Daily') {
-            shouldRepeat = true;
-          } else if (repeatType == 'Weekly') {
-            shouldRepeat = dateToRepeat.difference(lastRepeatedDate).inDays >= 7;
-          } else if (repeatType == 'Monthly') {
-            shouldRepeat = dateToRepeat.month != lastRepeatedDate.month ||
-                dateToRepeat.year != lastRepeatedDate.year;
-          } 
-          
-          if (shouldRepeat) {
-            final amount = (recurringTransactionDataFields['amount'] ?? 0).toDouble();
-            final category = recurringTransactionDataFields['category'];
-
-            final collectionPath = recurringTransactionDoc.reference.path.contains('incomes') ? 'incomes' : 'expenses';
-            logger.i("home_page Line 292: Collection path is $collectionPath");
-            final monthAbbr = _getMonthAbbreviation(today.month);
-
-            final newTransaction = {
-              'userId': userId,
-              'amount': amount,
-              'repeat': repeatType,
-              'category': category,
-              'description': description,
-              'date': dateToRepeat,
-              'lastRepeated': oriDate,
-            };
-
-            if (collectionPath == 'expenses') {
-              newTransaction['budgetPlans'] = selectedBudgetPlans;
-            }
-
-            final userDocRef = _firestore.collection(collectionPath).doc(userId); // Reference to the user's document for the collection expenses or incomes
-            final dateCollectionRef = userDocRef
-                .collection('Months')
-                .doc(monthAbbr)
-                .collection("${dateToRepeat.day.toString().padLeft(2, '0')}-${dateToRepeat.month.toString().padLeft(2, '0')}-${dateToRepeat.year}");
-
-            await dateCollectionRef.add(newTransaction);
-
-            final monthlyRef = userDocRef.collection('Months').doc(monthAbbr);
-            final monthlySnapshot = await monthlyRef.get();
-
-            String totalKey = collectionPath == 'incomes' ? 'Monthly_Income' : 'Monthly_Expense';
-            double currentTotal = 0;
-            if (monthlySnapshot.exists) {
-              final monthlyData = monthlySnapshot.data() ?? {};
-              currentTotal = (monthlyData[totalKey] ?? 0).toDouble();
-            }
-
-            // Update the monthly total for income or expense
-            await monthlyRef.set({
-              totalKey: currentTotal + amount,
-            }, SetOptions(merge: true));
-
-            // Update the last repeated date in the recurring transaction document
-            await recurringTransactionDoc.reference.update({'lastRepeated': dateToRepeat});
-          }
-        }
-      }
+      final currentMonth = _getMonthAbbreviation(today.month);
 
       // Update the monthly data for income and expense
       final income = await _fetchMonthlyData(
         userId: userId,
-        month: _getMonthAbbreviation(today.month),
+        month: currentMonth,
         collectionName: 'incomes',
         fieldName: 'Monthly_Income',
       );
 
       final expense = await _fetchMonthlyData(
         userId: userId,
-        month: _getMonthAbbreviation(today.month),
+        month: currentMonth,
         collectionName: 'expenses',
         fieldName: 'Monthly_Expense',
       );
 
+      // Optionally refresh today's view
       if (mounted) {
-        await _fetchTodayExpenseIncome(); // refresh today's view
+        await _fetchTodayExpenseIncome();
       }
 
       if (mounted) {
@@ -393,9 +290,9 @@ class HomePageState extends State<HomePage> {
         });
       }
 
-      logger.i("Done to check recurring transactions");
+      logger.i("Updated monthly income and expense.");
     } catch (e) {
-      logger.e("Failed to check recurring transactions: $e");
+      logger.e("Failed to update monthly data: $e");
 
       if (mounted) {
         setState(() {
@@ -683,7 +580,7 @@ class HomePageState extends State<HomePage> {
                         x: 0,
                         barRods: [
                           BarChartRodData(
-                            toY: monthlyIncome, // Now it's the Income on the left
+                            toY: monthlyIncome, 
                             color: const Color.fromARGB(255, 107, 223, 111),
                             width: 16,
                             borderRadius: BorderRadius.circular(4),
@@ -695,7 +592,7 @@ class HomePageState extends State<HomePage> {
                         x: 1,
                         barRods: [
                           BarChartRodData(
-                            toY: monthlyExpense, // Now it's the Expense on the right
+                            toY: monthlyExpense, 
                             color: const Color.fromARGB(255, 236, 99, 89),
                             width: 16,
                             borderRadius: BorderRadius.circular(4),
@@ -772,14 +669,15 @@ class HomePageState extends State<HomePage> {
 }
 
 Widget _buildTransactionList(List<Map<String, dynamic>> transactions, String label) {
+  final logger = Logger();
   return SizedBox(
-    height: 300, // Set a height constraint so the ListView knows its bounds
+    height: 300,
     child: Padding(
       padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Header Text with Background
+          // Header
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
             decoration: BoxDecoration(
@@ -797,38 +695,58 @@ Widget _buildTransactionList(List<Map<String, dynamic>> transactions, String lab
           ),
           const SizedBox(height: 15),
 
-          // Scrollable list of transactions
+          // Scrollable list
           Expanded(
             child: ListView.builder(
               itemCount: transactions.length,
               itemBuilder: (context, index) {
                 final txn = transactions[index];
-                return Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 4),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.5),
-                      borderRadius: BorderRadius.circular(45),
-                    ),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text(
-                          txn['category'],
-                          style: const TextStyle(
-                            fontSize: 16,
-                            color: Color.fromARGB(255, 165, 35, 226),
+                return GestureDetector(
+                  onTap: () {
+                    final docId = txn['docID'];
+                    if (docId != null) {
+                      Navigator.push(
+                        context,
+                        PageRouteBuilder(
+                          pageBuilder: (_, __, ___) => TransactionDetailsPage(
+                            documentID: docId,
+                            label: label,
                           ),
+                          transitionDuration: Duration.zero,
+                          reverseTransitionDuration: Duration.zero,
                         ),
-                        Text(
-                          'RM${txn['amount'].toStringAsFixed(2)}',
-                          style: TextStyle(
-                            fontSize: 16,
-                            color: label == 'Expenses' ? Colors.redAccent : Colors.green,
+                      );
+                    } else {
+                      logger.w("docID is null for this transaction.");
+                    }
+                  },
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 4),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.5),
+                        borderRadius: BorderRadius.circular(45),
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(
+                            txn['category'],
+                            style: const TextStyle(
+                              fontSize: 16,
+                              color: Color.fromARGB(255, 165, 35, 226),
+                            ),
                           ),
-                        ),
-                      ],
+                          Text(
+                            'RM${txn['amount'].toStringAsFixed(2)}',
+                            style: TextStyle(
+                              fontSize: 16,
+                              color: label == 'Expenses' ? Colors.redAccent : Colors.green,
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                 );
@@ -840,7 +758,6 @@ Widget _buildTransactionList(List<Map<String, dynamic>> transactions, String lab
     ),
   );
 }
-
 
 Widget _buildBottomAppBar(BuildContext context, double iconSize) {
   double screenWidth = MediaQuery.of(context).size.width;

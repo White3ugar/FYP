@@ -1,4 +1,4 @@
-import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_auth/firebase_auth.dart' as fb_auth;
 import 'package:firebase_core/firebase_core.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
@@ -12,6 +12,7 @@ import 'notification.dart';
 import 'userPreference_page.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'dart:io'; // Import dart:io for platform checks
 
 
@@ -27,10 +28,10 @@ Future<void> requestNotificationPermission() async {
 @pragma('vm:entry-point')
 void callbackDispatcher() {
   final loggerr = Logger();
-  loggerr.i("📌 notificationSender initialized");
+  loggerr.i("📌 callbackDispatcher initialized");
 
   Workmanager().executeTask((taskName, inputData) async {
-    loggerr.i('✅ Workmanager background task triggered: $taskName');
+    loggerr.i('Workmanager background task triggered: $taskName');
 
     await Firebase.initializeApp();
     final firestore = FirebaseFirestore.instance;
@@ -45,75 +46,215 @@ void callbackDispatcher() {
       return true;
     }
 
-    const budgetTypes = ['Daily', 'Weekly', 'Monthly'];
+    switch (taskName) {
+      case 'checkBudgetThresholds':
+        await checkBudgetThresholds(firestore, prefs, uid, loggerr);
+        break;
 
-    for (final type in budgetTypes) {
-      loggerr.i('Testing 1');
-      final budgetSnapshots = await firestore
-          .collection('budget_plans')
-          .doc(uid)
-          .collection(type)
-          .get();
+      case 'checkRecurringTransactions':
+        await checkAndRepeatTransactions(firestore, uid, loggerr);
+        break;
 
-      for (final budgetDoc in budgetSnapshots.docs) {
-        loggerr.i('Testing 2');
+      case 'checkExpiredBudgets':
+        await updateExpiredBudgetStatuses(firestore, uid, loggerr);
+        break;
 
-        final docData = budgetDoc.data();
-        final String? status = docData['budgetStatus'];
-
-        if (status != 'Active') {
-          loggerr.i('⏩ Skipping budget plan "${docData['budgetPlanName']}" because status is "$status"');
-          continue; // Skip this document
-        }
-
-        final budgetPlanName = docData['budgetPlanName'];
-        final contents = await budgetDoc.reference
-            .collection('budget_contents')
-            .get();
-
-        for (final categoryDoc in contents.docs) {
-          loggerr.i('Testing 3');
-          final data = categoryDoc.data();
-          final double amount = data['Amount']?.toDouble() ?? 0;
-          final double spent = data['Spent']?.toDouble() ?? 0;
-          final String category = data['Category'] ?? '';
-          final double threshold = amount * 0.8;
-
-          final flagKey = '${uid}_$type${budgetDoc.id}_${categoryDoc.id}_notified';
-
-          // For debugging: force flag to false
-          //await prefs.setBool(flagKey, false);
-
-          if (spent >= threshold) {
-            loggerr.i('Spent more than threshold, triggering notification sending');
-            final alreadyNotified = prefs.getBool(flagKey) ?? false;
-            loggerr.i('🔍 Notification flag for $category [$flagKey] = $alreadyNotified');
-
-            if (!alreadyNotified) {
-              final remaining = amount - spent;
-              await showNotification(
-                title: "Budget Alert",
-                body:
-                    'You have spent 80% for $category category under $type budget "$budgetPlanName", the remaining amount is RM ${remaining.toStringAsFixed(2)}',
-              );
-
-              loggerr.i('📣 Notification sent for $category in $type budget: $budgetPlanName');
-              await prefs.setBool(flagKey, true);
-            }
-          } else {
-            // Reset notification flag if spent goes below 80% again
-            await prefs.setBool(flagKey, false);
-          }
-        }
-      }
+      default:
+        loggerr.w('⚠️ Unknown task name: $taskName');
     }
 
     return true;
   });
 }
 
+Future<void> checkBudgetThresholds(FirebaseFirestore firestore, SharedPreferences prefs, String uid, Logger loggerr) async {
+  const budgetTypes = ['Daily', 'Weekly', 'Monthly'];
+
+  for (final type in budgetTypes) {
+    loggerr.i('🔍 Checking budget type: $type');
+    final budgetSnapshots = await firestore
+        .collection('budget_plans')
+        .doc(uid)
+        .collection(type)
+        .get();
+
+    for (final budgetDoc in budgetSnapshots.docs) {
+      final docData = budgetDoc.data();
+      final String? status = docData['budgetStatus'];
+
+      if (status != 'Active') {
+        loggerr.i('⏩ Skipping budget plan "${docData['budgetPlanName']}" because status is "$status"');
+        continue;
+      }
+
+      final budgetPlanName = docData['budgetPlanName'];
+      final contents = await budgetDoc.reference.collection('budget_contents').get();
+
+      for (final categoryDoc in contents.docs) {
+        final data = categoryDoc.data();
+        final double amount = data['Amount']?.toDouble() ?? 0;
+        final double spent = data['Spent']?.toDouble() ?? 0;
+        final String category = data['Category'] ?? '';
+        final double threshold = amount * 0.8;
+
+        final flagKey = '${uid}_$type${budgetDoc.id}_${categoryDoc.id}_notified';
+
+        if (spent >= threshold) {
+          final alreadyNotified = prefs.getBool(flagKey) ?? false;
+          loggerr.i('🔍 $category | Spent: $spent / $amount | Flag: $alreadyNotified');
+
+          if (!alreadyNotified) {
+            final remaining = amount - spent;
+
+            await showNotification(
+              title: "Budget Alert",
+              body:
+                  'You have spent 80% for $category category under $type budget "$budgetPlanName", the remaining amount is RM ${remaining.toStringAsFixed(2)}',
+            );
+
+            loggerr.i('📣 Notification sent for $category in $type budget: $budgetPlanName');
+            await prefs.setBool(flagKey, true);
+          }
+        } else {
+          await prefs.setBool(flagKey, false); // Reset if below 80%
+        }
+      }
+    }
+  }
+}
+
+Future<void> checkAndRepeatTransactions(FirebaseFirestore firestore, String uid, Logger logger) async {
+  logger.i('🔍 Checking for recurring transactions for user: $uid');
+  final today = DateTime.now();
+  final oriDate = today;
+
+  try {
+    final incomeRecurringSnapshot = await firestore
+        .collection('incomes')
+        .doc(uid)
+        .collection('Recurring')
+        .get();
+
+    final expenseRecurringSnapshot = await firestore
+        .collection('expenses')
+        .doc(uid)
+        .collection('Recurring')
+        .get();
+
+    final combinedDocs = [
+      ...incomeRecurringSnapshot.docs.map((doc) => {'doc': doc, 'type': 'incomes'}),
+      ...expenseRecurringSnapshot.docs.map((doc) => {'doc': doc, 'type': 'expenses'}),
+    ];
+
+    for (var entry in combinedDocs) {
+      final doc = entry['doc'] as QueryDocumentSnapshot;
+      final type = entry['type'] as String;
+      final data = doc.data() as Map<String, dynamic>;
+
+      final repeatType = data['repeat'];
+      final lastRepeated = (data['lastRepeated'] as Timestamp?)?.toDate();
+      if (repeatType == null || lastRepeated == null || repeatType == 'None') continue;
+
+      final daysDiff = today.difference(lastRepeated).inDays;
+      for (int i = 1; i <= daysDiff; i++) {
+        final repeatDate = lastRepeated.add(Duration(days: i));
+        bool shouldRepeat = repeatType == 'Daily' ||
+            (repeatType == 'Weekly' && i % 7 == 0) ||
+            (repeatType == 'Monthly' &&
+              (repeatDate.month != lastRepeated.month || repeatDate.year != lastRepeated.year));
+        if (!shouldRepeat) continue;
+
+        final amount = (data['amount'] ?? 0).toDouble();
+        final category = data['category'];
+        final desc = data['description'];
+        final monthAbbr = _getMonthAbbreviation(repeatDate.month);
+
+        final newTx = {
+          'userId': uid,
+          'amount': amount,
+          'category': category,
+          'description': desc,
+          'repeat': repeatType,
+          'date': repeatDate,
+          'lastRepeated': oriDate,
+        };
+
+        if (type == 'expenses') {
+          newTx['budgetPlans'] = List<String>.from(data['budgetPlans'] ?? []);
+        }
+
+        final txRef = firestore
+            .collection(type)
+            .doc(uid)
+            .collection('Months')
+            .doc(monthAbbr)
+            .collection("${repeatDate.day.toString().padLeft(2, '0')}-${repeatDate.month.toString().padLeft(2, '0')}-${repeatDate.year}");
+
+        await txRef.add(newTx);
+
+        // Update monthly total
+        final monthlyRef = firestore.collection(type).doc(uid).collection('Months').doc(monthAbbr);
+        final monthlySnap = await monthlyRef.get();
+        final totalKey = type == 'incomes' ? 'Monthly_Income' : 'Monthly_Expense';
+        final currentTotal = (monthlySnap.data()?[totalKey] ?? 0).toDouble();
+        await monthlyRef.set({totalKey: currentTotal + amount}, SetOptions(merge: true));
+
+        await doc.reference.update({'lastRepeated': repeatDate});
+      }
+    }
+
+    logger.i('✔️ Recurring transactions checked and updated for user: $uid');
+  } catch (e) {
+    logger.e('❌ Error in recurring transaction checker: $e');
+  }
+}
+
+// Helper function to get month name abbreviation
+String _getMonthAbbreviation(int monthNumber) {
+  const monthAbbreviations = [
+    'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
+  ];
+  return monthAbbreviations[monthNumber - 1];
+}
+
+Future<void> updateExpiredBudgetStatuses(
+  FirebaseFirestore firestore,
+  String uid,
+  Logger logger,
+) async {
+  logger.i("📅 Checking for expired budgets for user: $uid");
+  final now = DateTime.now();
+  final types = ['Daily', 'Weekly', 'Monthly'];
+
+  for (final type in types) {
+    final querySnapshot = await firestore
+        .collection('budget_plans')
+        .doc(uid)
+        .collection(type)
+        .get();
+
+    for (final doc in querySnapshot.docs) {
+      final data = doc.data();
+      final endTimestamp = data['budgetPlanEnd'];
+      final currentStatus = data['budgetStatus'];
+
+      if (endTimestamp == null ||
+          currentStatus == 'Expired' ||
+          currentStatus == 'Archived') continue;
+
+      final endDate = (endTimestamp as Timestamp).toDate();
+
+      if (now.isAfter(endDate)) {
+        logger.i("📅 Expiring budget in $type: ${doc.id}");
+        await doc.reference.update({'budgetStatus': 'Expired'});
+      }
+    }
+  }
+}
+
 Future<void> saveNotificationPreference() async {
-  final user = FirebaseAuth.instance.currentUser;
+  final user = fb_auth.FirebaseAuth.instance.currentUser;
   if (user == null) {
     Logger().w("⚠️ Cannot save notification preference - user not logged in.");
     return;
@@ -144,57 +285,71 @@ Future<void> saveNotificationPreference() async {
 void main() async {
   final logger = Logger();
   WidgetsFlutterBinding.ensureInitialized();
-
-  // 1. Initialize Firebase
   await Firebase.initializeApp();
 
-  // 2. Request notification permission for android > 13
+  // Request permission
   await requestNotificationPermission();
 
-  // 3. Initialize WorkManager (for background task)
-  logger.i("📌 Initializing Workmanager for notificationSender function");
-  Workmanager().initialize(callbackDispatcher, isInDebugMode: false);
-
-  // 4. Register periodic background task
-  final uid = FirebaseAuth.instance.currentUser?.uid;
-  logger.i('🔍 Current user UID at line 139: $uid');
-
-  if (uid != null && uid.isNotEmpty) {
-    final docRef = FirebaseFirestore.instance.collection('notifications').doc(uid);
-
-    try {
-      // Check if the user has allowed notifications
-      final docSnapshot = await docRef.get();
-      final allowNotification = docSnapshot.data()?['allowNotification'];
-
-      if (allowNotification == true) {
-        logger.i("🔔 Notifications allowed — registering background task");
-
-        Workmanager().registerPeriodicTask(
-          "checkBudgetTask",
-          "checkBudgetTask",
-          frequency: const Duration(hours: 1),
-          inputData: {'uid': uid},
-        );
-      } else {
-        logger.i("🔕 Notifications are disabled — skipping background task registration");
-      }
-    } catch (e) {
-      logger.e("❌ Error reading notification preferences: $e");
-    }
-  } else {
-    logger.w('⚠️ User not logged in; cannot register periodic task');
-  }
-
-  // 5. Initialize local notifications
-  const AndroidInitializationSettings initializationSettingsAndroid =
-      AndroidInitializationSettings('@mipmap/ic_launcher');
-
+  // Initialize local notifications
+  const AndroidInitializationSettings initializationSettingsAndroid = AndroidInitializationSettings('@mipmap/ic_launcher');
   const InitializationSettings initializationSettings = InitializationSettings(android: initializationSettingsAndroid);
-
   await flutterLocalNotificationsPlugin.initialize(initializationSettings);
 
-  // 6. Launch your app
+  // Initialize Supabase
+  await Supabase.initialize(
+    url: 'https://dnppguuvvexrmhzczsbs.supabase.co',
+    anonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRucHBndXV2dmV4cm1oemN6c2JzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDkxNjM5MzAsImV4cCI6MjA2NDczOTkzMH0.sCjgy0KvLE9NTQaLVfDsOxQzOc1PpddGyrgPz1mwV9g',
+  );
+
+  // Initialize Workmanager
+  logger.i("📌 Initializing Workmanager");
+  Workmanager().initialize(callbackDispatcher, isInDebugMode: false);
+
+  // Delay task registration until currentUser is available
+  fb_auth.FirebaseAuth.instance.authStateChanges().firstWhere((user) => user != null).then((user) async {
+    if (user == null) {
+      logger.w('⚠️ User is null, cannot register background tasks.');
+      return;
+    }
+    final uid = user.uid;
+    logger.i('✅ UID ready: $uid');
+
+    saveNotificationPreference();
+
+    // Register recurring task
+    await Workmanager().registerPeriodicTask(
+      "repeatTransactionsTask",
+      "checkRecurringTransactions",
+      frequency: const Duration(minutes: 15),
+      inputData: {'uid': uid},
+    );
+
+    // Register expired budget checking task
+    await Workmanager().registerPeriodicTask(
+      "checkExpiredBudgetsTask",
+      "checkExpiredBudgets",
+      frequency: const Duration(minutes: 15),
+      inputData: {'uid': uid},
+    );
+
+    // Check allowNotification and register threshold task
+    final docRef = FirebaseFirestore.instance.collection('notifications').doc(uid);
+    final docSnapshot = await docRef.get();
+    final allowNotification = docSnapshot.data()?['allowNotification'];
+
+    if (allowNotification == true) {
+      logger.i("🔔 Registering budget threshold checker");
+      await Workmanager().registerPeriodicTask(
+        "checkBudgetTask",
+        "checkBudgetThresholds",
+        frequency: const Duration(hours: 1),
+        inputData: {'uid': uid},
+      );
+    } else {
+      logger.i("🔕 Notifications disabled.");
+    }
+  });
+
   runApp(const MyApp());
 }
 
@@ -219,7 +374,7 @@ class AuthWrapper extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final user = FirebaseAuth.instance.currentUser;
+    final user = fb_auth.FirebaseAuth.instance.currentUser;
 
     if (user != null) {
       return const HomePage(); // ✅ Already logged in
@@ -239,7 +394,7 @@ class LoginPage extends StatefulWidget {
 class LoginPageState extends State<LoginPage> {
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
-  final FirebaseAuth _auth = FirebaseAuth.instance;
+  final fb_auth.FirebaseAuth _auth = fb_auth.FirebaseAuth.instance;
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
   final GoogleSignIn _googleSignIn = GoogleSignIn();
@@ -247,13 +402,16 @@ class LoginPageState extends State<LoginPage> {
 
   Future<void> _signInWithEmail() async {
     try {
-      UserCredential userCredential = await _auth.signInWithEmailAndPassword(
+      fb_auth.UserCredential userCredential = await _auth.signInWithEmailAndPassword(
         email: _emailController.text.trim(),
         password: _passwordController.text.trim(),
       );
 
-      User? user = userCredential.user;
+      fb_auth.User? user = userCredential.user;
       if (user != null) {
+
+        if(!mounted)  return; // Check if the widget is still mounted
+
         if (user.emailVerified) {
           // ✅ Navigate to HomePage if email is verified
           Navigator.pushReplacement(
@@ -265,7 +423,7 @@ class LoginPageState extends State<LoginPage> {
           _showAlertDialog("Email Not Verified", "Please verify your email before logging in");
         }
       }
-    } on FirebaseAuthException catch (e) {
+    } on fb_auth.FirebaseAuthException catch (e) {
       String errorMessage = "Login Failed. Please try again.";
 
       if (e.code == "wrong-password" || e.code == "invalid-credential") {
@@ -335,14 +493,14 @@ class LoginPageState extends State<LoginPage> {
     final GoogleSignInAuthentication googleAuth = await googleUser.authentication;
 
     // **Step 3: Create a new credential using the authentication tokens**
-    final AuthCredential credential = GoogleAuthProvider.credential(
+    final fb_auth.AuthCredential credential = fb_auth.GoogleAuthProvider.credential(
       accessToken: googleAuth.accessToken,
       idToken: googleAuth.idToken,
     );
 
     // **Step 4: Sign in to Firebase with the Google credentials**
-    UserCredential userCredential = await _auth.signInWithCredential(credential);
-    User? user = userCredential.user;
+    fb_auth.UserCredential userCredential = await _auth.signInWithCredential(credential);
+    fb_auth.User? user = userCredential.user;
 
     if (user == null) {
       throw Exception("User creation failed.");

@@ -65,19 +65,36 @@ class _NotificationManagerPageState extends State<NotificationManagerPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text("Notification Settings"),
+        backgroundColor: Colors.white,
+        elevation: 0,
+        iconTheme: const IconThemeData(color: Color.fromARGB(255, 165, 35, 226)),
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : Padding(
-              padding: const EdgeInsets.only(top: 16.0), // Add padding here
-              child: ListTile(
-                title: const Text("Notification"),
-                trailing: Switch(
-                  value: _allowNotification,
-                  onChanged: _updateNotificationPreference,
-                  activeColor: const Color.fromARGB(255, 165, 35, 226),
-                ),
+              padding: const EdgeInsets.all(16.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    "Notification Settings",
+                    style: TextStyle(
+                      fontSize: 22,
+                      fontWeight: FontWeight.bold,
+                      color: Color.fromARGB(255, 165, 35, 226),
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text("Receive Notification"),
+                    trailing: Switch(
+                      value: _allowNotification,
+                      onChanged: _updateNotificationPreference,
+                      activeColor: const Color.fromARGB(255, 165, 35, 226),
+                    ),
+                  ),
+                ],
               ),
             ),
     );

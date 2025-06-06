@@ -4,6 +4,7 @@ import 'settings_CategoriesManager.dart';
 import 'settings_UserSettings.dart'; 
 import 'userPreference_page.dart'; 
 import 'settings_Notification.dart';
+import 'view_transactions_page.dart';
 
 class SettingsPage extends StatelessWidget {
   const SettingsPage({super.key});
@@ -132,6 +133,28 @@ class SettingsPage extends StatelessWidget {
                 PageRouteBuilder(
                   pageBuilder: (context, animation, secondaryAnimation) =>
                       const NotificationManagerPage(),
+                  transitionsBuilder: (context, animation, secondaryAnimation, child) {
+                    const begin = Offset(1.0, 0.0);
+                    const end = Offset.zero;
+                    const curve = Curves.easeInOut;
+
+                    var tween = Tween(begin: begin, end: end).chain(CurveTween(curve: curve));
+                    var offsetAnimation = animation.drive(tween);
+
+                    return SlideTransition(position: offsetAnimation, child: child);
+                  },
+                ),
+              );
+            },
+          ),
+          buildSettingsTile(
+            title: "View Transactions",
+            onTap: () {
+              Navigator.push(
+                context,
+                PageRouteBuilder(
+                  pageBuilder: (context, animation, secondaryAnimation) =>
+                      const viewTransactionsPage(), // <-- Make sure this page exists
                   transitionsBuilder: (context, animation, secondaryAnimation, child) {
                     const begin = Offset(1.0, 0.0);
                     const end = Offset.zero;

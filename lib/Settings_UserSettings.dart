@@ -159,16 +159,41 @@ class _UserSettingsPageState extends State<UserSettingsPage> {
   @override
   Widget build(BuildContext context) {
     if (username == null || email == null) {
-      return const Center(child: CircularProgressIndicator(color: Color.fromARGB(255, 165, 35, 226)));
+      return const Center(
+        child: CircularProgressIndicator(
+          color: Color.fromARGB(255, 165, 35, 226),
+        ),
+      );
     }
 
     return Scaffold(
-      appBar: AppBar(title: const Text("User Profile")),
+      appBar: AppBar(
+        backgroundColor: Colors.white,
+        elevation: 0, 
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back, color: Color.fromARGB(255, 165, 35, 226)),
+          onPressed: () {
+            Navigator.pop(context);
+          },
+        ),
+      ),
       body: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // Title
+            const Text(
+              "User Profile",
+              style: TextStyle(
+                fontSize: 22,
+                fontWeight: FontWeight.bold,
+                color: Color.fromARGB(255, 165, 35, 226),
+              ),
+            ),
+            const SizedBox(height: 24),
+
+            // User Info
             buildLabeledInfo(
               icon: Icons.person,
               label: 'Username',
@@ -192,12 +217,12 @@ class _UserSettingsPageState extends State<UserSettingsPage> {
                 child: ElevatedButton(
                   onPressed: () => _auth.sendPasswordResetEmail(email: email!),
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color.fromARGB(255, 165, 35, 226), // Purple background
-                    foregroundColor: Colors.white, // White text
-                    padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 10), // Inner padding
+                    backgroundColor: const Color.fromARGB(255, 165, 35, 226),
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 10),
                     textStyle: const TextStyle(fontSize: 16),
                     shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8), // Optional: rounded corners
+                      borderRadius: BorderRadius.circular(8),
                     ),
                   ),
                   child: const Text("Change Password"),
