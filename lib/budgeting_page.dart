@@ -293,8 +293,8 @@ class _BudgetPageState extends State<BudgetPage> {
                                           context: context,
                                           builder: (ctx) => AlertDialog(
                                             backgroundColor: const Color.fromARGB(255, 165, 35, 226),
-                                            title: const Text("Success"),
-                                            content: Text("The budget plan '$planName' has been archived."),
+                                            title: const Text("Success", style: TextStyle(color: Colors.white)),
+                                            content: Text("The budget plan '$planName' has been archived.", style: const TextStyle(color: Colors.white)),
                                             actions: [
                                               TextButton(
                                                 onPressed: () => Navigator.pop(ctx),
@@ -920,8 +920,21 @@ class _BudgetPageState extends State<BudgetPage> {
     });
 
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Budget updated successfully!")),
+      showDialog(
+        context: context,
+        builder: (BuildContext context) {
+          return AlertDialog(
+            backgroundColor: const Color.fromARGB(255, 165, 35, 226),
+            title: const Text('Success', style: TextStyle(color: Colors.white)),
+            content: const Text('Budget updated successfully!', style: TextStyle(color: Colors.white)),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text('OK', style: TextStyle(color: Colors.white)),
+              ),
+            ],
+          );
+        },
       );
     }
   }
@@ -1034,7 +1047,7 @@ class _BudgetPageState extends State<BudgetPage> {
               begin: Alignment.topCenter,
               end: Alignment.bottomCenter,
               colors: [
-                Color.fromARGB(255, 241, 109, 231), // pink/purple
+                Color.fromARGB(255, 241, 109, 231), // pink
                 Colors.white, // fade to white
               ],
             ),

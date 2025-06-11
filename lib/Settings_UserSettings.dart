@@ -158,6 +158,7 @@ class _UserSettingsPageState extends State<UserSettingsPage> {
 
   @override
   Widget build(BuildContext context) {
+    double screenWidth = MediaQuery.of(context).size.width;
     if (username == null || email == null) {
       return const Center(
         child: CircularProgressIndicator(
@@ -183,12 +184,12 @@ class _UserSettingsPageState extends State<UserSettingsPage> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             // Title
-            const Text(
+            Text(
               "User Profile",
               style: TextStyle(
-                fontSize: 22,
+                fontSize: screenWidth * 0.065,
                 fontWeight: FontWeight.bold,
-                color: Color.fromARGB(255, 165, 35, 226),
+                color: const Color.fromARGB(255, 165, 35, 226),
               ),
             ),
             const SizedBox(height: 24),
@@ -215,18 +216,55 @@ class _UserSettingsPageState extends State<UserSettingsPage> {
               Padding(
                 padding: const EdgeInsets.only(left: 16.0, bottom: 12.0),
                 child: ElevatedButton(
-                  onPressed: () => _auth.sendPasswordResetEmail(email: email!),
+                  onPressed: () async {
+                    await _auth.sendPasswordResetEmail(email: email!);
+                    if (!mounted) return;
+
+                    showDialog(
+                      context: context,
+                      barrierDismissible: false,
+                      builder: (context) {
+                        return AlertDialog(
+                          backgroundColor: const Color.fromARGB(255, 165, 35, 226),
+                          title: const Text(
+                            'Success',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          content: const Text(
+                            'Password reset email sent. Please check your email.',                            
+                            style: TextStyle(color: Colors.white),
+                          ),
+                          actions: [
+                            TextButton(
+                              onPressed: () {
+                                Navigator.of(context).pop(); // Close the dialog
+                              },
+                              child: const Text(
+                                'OK',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                          ],
+                        );
+                      },
+                    );
+                  },
                   style: ElevatedButton.styleFrom(
                     backgroundColor: const Color.fromARGB(255, 165, 35, 226),
                     foregroundColor: Colors.white,
                     padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 10),
                     textStyle: const TextStyle(fontSize: 16),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8),
-                    ),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                   ),
                   child: const Text("Change Password"),
-                ),
+                )
+
               )
           ],
         ),

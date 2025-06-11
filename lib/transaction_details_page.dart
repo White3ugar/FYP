@@ -70,29 +70,84 @@ class _TransactionDetailsPageState extends State<TransactionDetailsPage> {
     }
   }
 
+  Future<String?> _getCategoryIconPath(String categoryName) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return null;
+
+    final isExpense = widget.label.toLowerCase().contains("expense");
+    final categoryTypeDoc = isExpense ? "Expense categories" : "Income categories";
+
+    try {
+      final snapshot = await FirebaseFirestore.instance
+          .collection('Categories')
+          .doc(user.uid)
+          .collection('Transaction Categories')
+          .doc(categoryTypeDoc)
+          .get();
+
+      if (snapshot.exists) {
+        final categories = snapshot.data()?['categoryNames'] as List<dynamic>?;
+        final match = categories?.firstWhere(
+          (cat) => cat['name'] == categoryName,
+          orElse: () => null,
+        );
+        return match?['icon'] as String?;
+      }
+    } catch (e) {
+      logger.e("Error fetching category icon: $e");
+    }
+    return null;
+  }
+
   Widget _buildDataField(String title, dynamic value) {
     final double screenHeight = MediaQuery.of(context).size.height;
 
     // Handle special case for "Image" field
-    if (title == "Image" && value is String && value.isNotEmpty) {
+    if (title == "Image") {
+      final imageUrl = value?.toString();
+      final category = transactionData?['category'];
+
       return Padding(
         padding: const EdgeInsets.symmetric(vertical: 10),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const SizedBox(height: 8),
-            ClipRRect(
-              borderRadius: BorderRadius.circular(12),
-              child: Image.network(
-                value,
-                width: double.infinity,
-                height: screenHeight * 0.24,
-                fit: BoxFit.contain,
-                errorBuilder: (context, error, stackTrace) =>
-                    const Text("Failed to load image"),
-              ),
-            ),
-          ],
+        child: FutureBuilder<String?>(
+          future: (imageUrl == null || imageUrl.isEmpty)
+              ? _getCategoryIconPath(category)
+              : Future.value(imageUrl),
+          builder: (context, snapshot) {
+            final imageToShow = snapshot.data;
+            if (imageToShow == null || imageToShow.isEmpty) {
+              return const Text("No image or icon available");
+            }
+
+            final isNetworkImage = imageToShow.startsWith("http");
+
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const SizedBox(height: 8),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(12),
+                  child: isNetworkImage
+                      ? Image.network(
+                          imageToShow,
+                          width: double.infinity,
+                          height: screenHeight * 0.24,
+                          fit: BoxFit.contain,
+                          errorBuilder: (context, error, stackTrace) =>
+                              const Text("Failed to load image"),
+                        )
+                      : Image.asset(
+                          imageToShow,
+                          width: double.infinity,
+                          height: screenHeight * 0.24,
+                          fit: BoxFit.contain,
+                          errorBuilder: (context, error, stackTrace) =>
+                              const Text("Failed to load icon"),
+                        ),
+                ),
+              ],
+            );
+          },
         ),
       );
     }
@@ -187,7 +242,7 @@ class _TransactionDetailsPageState extends State<TransactionDetailsPage> {
                   borderRadius: BorderRadius.circular(15),
                 ),
                 child: Padding(
-                  padding: const EdgeInsets.only(left: 8),
+                  padding: const EdgeInsets.only(left: 5),
                   child: Text(
                     displayValue,
                     style: const TextStyle(
@@ -214,7 +269,7 @@ class _TransactionDetailsPageState extends State<TransactionDetailsPage> {
           color: Color.fromARGB(255, 165, 35, 226), // Back button color
         ),
         title: Text(
-          '${widget.label} Details',
+          '${widget.label == 'Expenses' ? 'Expense' : widget.label == 'Incomes' ? 'Income' : widget.label} Details',
           style: const TextStyle(
             color: Color.fromARGB(255, 165, 35, 226),
           ),
@@ -277,8 +332,8 @@ class _TransactionDetailsPageState extends State<TransactionDetailsPage> {
                                 _buildDataField("Date", transactionData!['date']),                                
                                 if (widget.label == "Expenses") ...[
                                   _buildDataField("Budget Plans", transactionData!['budgetPlans']),
-                                  _buildDataField("Repeat", transactionData!['repeat']),
                                 ],
+                                _buildDataField("Repeat", transactionData!['repeat']),
                                 _buildDataField("Description", transactionData!['description']),
                               ],
                             ),

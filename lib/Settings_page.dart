@@ -154,7 +154,7 @@ class SettingsPage extends StatelessWidget {
                 context,
                 PageRouteBuilder(
                   pageBuilder: (context, animation, secondaryAnimation) =>
-                      const viewTransactionsPage(), // <-- Make sure this page exists
+                      const ViewTransactionsPage(), // <-- Make sure this page exists
                   transitionsBuilder: (context, animation, secondaryAnimation, child) {
                     const begin = Offset(1.0, 0.0);
                     const end = Offset.zero;

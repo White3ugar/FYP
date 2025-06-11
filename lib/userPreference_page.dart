@@ -213,6 +213,7 @@ void _showMultiSelectDialog(FormFieldState<List<String>> formFieldState) async {
 }
 
   Widget buildSpendingPrioritySelector() {
+    double screenWidth = MediaQuery.of(context).size.width;
     return FormField<List<String>>(
       initialValue: selectedSpendingPriorities,
       validator: (value) {
@@ -239,14 +240,16 @@ void _showMultiSelectDialog(FormFieldState<List<String>> formFieldState) async {
               child: InputDecorator(
                 decoration:  InputDecoration(
                   border:  const OutlineInputBorder(),
-                  enabledBorder: const OutlineInputBorder(
-                    borderSide: BorderSide(color: Color.fromARGB(255, 165, 35, 226)),
+                  enabledBorder:  OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(screenWidth * 0.03),
+                    borderSide: const BorderSide(color: Color.fromARGB(255, 165, 35, 226)),
                   ),
-                  focusedBorder: const OutlineInputBorder(
-                    borderSide: BorderSide(color: Color.fromARGB(255, 165, 35, 226), width: 2),
+                  focusedBorder:  OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(screenWidth * 0.03),
+                    borderSide: const BorderSide(color: Color.fromARGB(255, 165, 35, 226), width: 2),
                   ),
                   contentPadding:  const EdgeInsets.symmetric(vertical: 14, horizontal: 12),
-                  errorText: formFieldState.errorText, // Displays error message if any
+                  errorText: formFieldState.errorText,
                 ),
                 child: Text(
                   selectedSpendingPriorities.isEmpty
@@ -269,201 +272,220 @@ void _showMultiSelectDialog(FormFieldState<List<String>> formFieldState) async {
 
   @override
   Widget build(BuildContext context) {
-    final double screenHeight = MediaQuery.of(context).size.height;
+    double screenHeight = MediaQuery.of(context).size.height;
+    double screenWidth = MediaQuery.of(context).size.width;
     final Logger logger = Logger();
 
-    return Scaffold(
-      appBar: AppBar(
-        backgroundColor: widget.fromPage == 'setting'
-          ? Colors.white
-          : const Color.fromARGB(255, 239, 179, 236),
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Color.fromARGB(255, 165, 35, 226)),
-          onPressed: () {
-            Navigator.pop(context);
-          },
-        ),
-      ),
-      backgroundColor: widget.fromPage == 'setting'
-        ? Colors.white
-        : const Color.fromARGB(255, 239, 179, 236),
-      body: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Form(
-          key: _formKey,
-          child: ListView(
-            children: [
-              // Title
-              Text(
-                widget.fromPage == 'setting'
-                ? "Preferences"
-                : "Let’s get to know your financial preferences",
-                style: const TextStyle(
-                  fontSize: 22,
-                  fontWeight: FontWeight.bold,
-                  color: Color.fromARGB(255, 165, 35, 226),
-                ),
-              ),
-              const SizedBox(height: 24),
-
-              // Occupation
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    "What is your occupation?",
-                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Color.fromARGB(255, 165, 35, 226)),
-                  ),
-                  const SizedBox(height: 8),
-                  SizedBox(
-                    height: screenHeight * 0.055,
-                    child: TextFormField(
-                      controller: occupationController,
-                      decoration: const InputDecoration(
-                        enabledBorder: OutlineInputBorder(
-                          borderSide: BorderSide(color: Color.fromARGB(255, 165, 35, 226)),
-                        ),
-                        focusedBorder: OutlineInputBorder(
-                          borderSide: BorderSide(color: Color.fromARGB(255, 165, 35, 226), width: 2),
-                        ),
-                        contentPadding: EdgeInsets.symmetric(vertical: 0, horizontal: 12),
-                      ),
-                      validator: (value) =>
-                          value == null || value.isEmpty ? "Please enter your occupation" : null,
-                    ),
-                  ),
+    return Container(
+      decoration: widget.fromPage != 'setting'
+          ? const BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [
+                  Color.fromRGBO(255, 216, 218, 1),
+                  Color.fromARGB(255, 241, 109, 231),
                 ],
-              ),
-              const SizedBox(height: 16),
-
-              // Income Range
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    "What is your monthly income range?",
-                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Color.fromARGB(255, 165, 35, 226)),
-                  ),
-                  const SizedBox(height: 8),
-                  SizedBox(
-                    height: screenHeight * 0.055,
-                    child: DropdownButtonFormField<String>(
-                      decoration: const InputDecoration(
-                        enabledBorder: OutlineInputBorder(
-                          borderSide: BorderSide(color: Color.fromARGB(255, 165, 35, 226)),
-                        ),
-                        focusedBorder: OutlineInputBorder(
-                          borderSide: BorderSide(color: Color.fromARGB(255, 165, 35, 226), width: 2),
-                        ),
-                        contentPadding: EdgeInsets.symmetric(vertical: 0, horizontal: 12),
-                      ),
-                      value: incomeRange,
-                      items: incomeOptions
-                          .map((e) => DropdownMenuItem(value: e, child: Text(e)))
-                          .toList(),
-                      onChanged: (val) => setState(() => incomeRange = val),
-                      validator: (value) => value == null ? "Please select your income range" : null,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 16),
-
-              // Financial Goal
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    "What is your top financial goal?",
-                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Color.fromARGB(255, 165, 35, 226)),
-                  ),
-                  const SizedBox(height: 8),
-                  SizedBox(
-                    height: screenHeight * 0.055,
-                    child: TextFormField(
-                      controller: financialGoalController,
-                      decoration: const InputDecoration(
-                        enabledBorder: OutlineInputBorder(
-                          borderSide: BorderSide(color: Color.fromARGB(255, 165, 35, 226)),
-                        ),
-                        focusedBorder: OutlineInputBorder(
-                          borderSide: BorderSide(color: Color.fromARGB(255, 165, 35, 226), width: 2),
-                        ),
-                        contentPadding: EdgeInsets.symmetric(vertical: 0, horizontal: 12),
-                      ),
-                      validator: (value) =>
-                          value == null || value.isEmpty ? "Please enter your financial goal" : null,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 16),
-
-              // Finance Method
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    "How do you currently manage your finances?",
-                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Color.fromARGB(255, 165, 35, 226)),
-                  ),
-                  const SizedBox(height: 8),
-                  SizedBox(
-                    height: screenHeight * 0.055,
-                    child: DropdownButtonFormField<String>(
-                      decoration: const InputDecoration(
-                        enabledBorder: OutlineInputBorder(
-                          borderSide: BorderSide(color: Color.fromARGB(255, 165, 35, 226)),
-                        ),
-                        focusedBorder: OutlineInputBorder(
-                          borderSide: BorderSide(color: Color.fromARGB(255, 165, 35, 226), width: 2),
-                        ),
-                        contentPadding: EdgeInsets.symmetric(vertical: 0, horizontal: 12),
-                      ),
-                      value: financeMethod,
-                      items: methodOptions
-                          .map((e) => DropdownMenuItem(value: e, child: Text(e)))
-                          .toList(),
-                      onChanged: (val) => setState(() => financeMethod = val),
-                      validator: (value) => value == null ? "Please select a method" : null,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 16),
-
-              // Spending Priority (multi-select with loading state)
-              isLoadingCategories
-                  ? Builder(
-                      builder: (context) {
-                        logger.i("loading now");
-                        return const Center(child: CircularProgressIndicator());
-                      },
-                    )
-                  : buildSpendingPrioritySelector(),
-              const SizedBox(height: 45),
-
-             Center(
-              child: SizedBox(
-                width: 250,
-                child: ElevatedButton(
-                  onPressed: () {
-                    if (_formKey.currentState!.validate()) {
-                      savePreferences();
-                    }
-                  },
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color.fromARGB(255, 165, 35, 226),
-                  ),
-                  child: const Text(
-                    "Save Preferences",
-                    style: TextStyle(color: Colors.white),
-                  ),
-                ),
               ),
             )
-            ],
+          : const BoxDecoration(color: Colors.white),
+      child: Scaffold(
+        backgroundColor: Colors.transparent, // Make Scaffold background transparent to show gradient
+        appBar: AppBar(
+          backgroundColor: Colors.transparent, // Make AppBar transparent to show gradient
+          elevation: 0,
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back, color: Color.fromARGB(255, 165, 35, 226)),
+            onPressed: () {
+              Navigator.pop(context);
+            },
+          ),
+        ),
+        body: Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Form(
+            key: _formKey,
+            child: ListView(
+              children: [
+                // Title
+                Text(
+                  widget.fromPage == 'setting'
+                      ? "Preferences"
+                      : "Let’s get to know your financial preferences",
+                  style: TextStyle(
+                    fontSize: screenWidth * 0.065,
+                    fontWeight: FontWeight.bold,
+                    color: const Color.fromARGB(255, 165, 35, 226),
+                  ),
+                ),
+                const SizedBox(height: 24),
+
+                // Occupation
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      "What is your occupation?",
+                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Color.fromARGB(255, 165, 35, 226)),
+                    ),
+                    const SizedBox(height: 8),
+                    SizedBox(
+                      height: screenHeight * 0.055,
+                      child: TextFormField(
+                        controller: occupationController,
+                        decoration: InputDecoration(
+                          enabledBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(screenWidth * 0.03),
+                            borderSide: const BorderSide(color: Color.fromARGB(255, 165, 35, 226)),
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(screenWidth * 0.03),
+                            borderSide: const BorderSide(color: Color.fromARGB(255, 165, 35, 226), width: 2),
+                          ),
+                          contentPadding: const EdgeInsets.symmetric(vertical: 0, horizontal: 12),
+                        ),
+                        validator: (value) =>
+                            value == null || value.isEmpty ? "Please enter your occupation" : null,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+
+                // Income Range
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      "What is your monthly income range?",
+                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Color.fromARGB(255, 165, 35, 226)),
+                    ),
+                    const SizedBox(height: 8),
+                    SizedBox(
+                      height: screenHeight * 0.055,
+                      child: DropdownButtonFormField<String>(
+                        decoration: InputDecoration(
+                          enabledBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(screenWidth * 0.03),
+                            borderSide: const BorderSide(color: Color.fromARGB(255, 165, 35, 226)),
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(screenWidth * 0.03),
+                            borderSide: const BorderSide(color: Color.fromARGB(255, 165, 35, 226), width: 2),
+                          ),
+                          contentPadding: const EdgeInsets.symmetric(vertical: 0, horizontal: 12),
+                        ),
+                        value: incomeRange,
+                        items: incomeOptions
+                            .map((e) => DropdownMenuItem(value: e, child: Text(e)))
+                            .toList(),
+                        onChanged: (val) => setState(() => incomeRange = val),
+                        validator: (value) => value == null ? "Please select your income range" : null,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+
+                // Financial Goal
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      "What is your top financial goal?",
+                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Color.fromARGB(255, 165, 35, 226)),
+                    ),
+                    const SizedBox(height: 8),
+                    SizedBox(
+                      height: screenHeight * 0.055,
+                      child: TextFormField(
+                        controller: financialGoalController,
+                        decoration: InputDecoration(
+                          enabledBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(screenWidth * 0.03),
+                            borderSide: const BorderSide(color: Color.fromARGB(255, 165, 35, 226)),
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(screenWidth * 0.03),
+                            borderSide: const BorderSide(color: Color.fromARGB(255, 165, 35, 226), width: 2),
+                          ),
+                          contentPadding: const EdgeInsets.symmetric(vertical: 0, horizontal: 12),
+                        ),
+                        validator: (value) =>
+                            value == null || value.isEmpty ? "Please enter your financial goal" : null,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+
+                // Finance Method
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      "How do you currently manage your finances?",
+                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Color.fromARGB(255, 165, 35, 226)),
+                    ),
+                    const SizedBox(height: 8),
+                    SizedBox(
+                      height: screenHeight * 0.055,
+                      child: DropdownButtonFormField<String>(
+                        decoration: InputDecoration(
+                          enabledBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(screenWidth * 0.03),
+                            borderSide: const BorderSide(color: Color.fromARGB(255, 165, 35, 226)),
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(screenWidth * 0.03),
+                            borderSide: const BorderSide(color: Color.fromARGB(255, 165, 35, 226), width: 2),
+                          ),
+                          contentPadding: const EdgeInsets.symmetric(vertical: 0, horizontal: 12),
+                        ),
+                        value: financeMethod,
+                        items: methodOptions
+                            .map((e) => DropdownMenuItem(value: e, child: Text(e)))
+                            .toList(),
+                        onChanged: (val) => setState(() => financeMethod = val),
+                        validator: (value) => value == null ? "Please select a method" : null,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+
+                // Spending Priority (multi-select with loading state)
+                isLoadingCategories
+                    ? Builder(
+                        builder: (context) {
+                          logger.i("loading now");
+                          return const Center(child: CircularProgressIndicator(color: Colors.white,));
+                        },
+                      )
+                    : buildSpendingPrioritySelector(),
+                const SizedBox(height: 45),
+
+                Center(
+                  child: SizedBox(
+                    width: 250,
+                    child: ElevatedButton(
+                      onPressed: () {
+                        if (_formKey.currentState!.validate()) {
+                          savePreferences();
+                        }
+                      },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color.fromARGB(255, 165, 35, 226),
+                      ),
+                      child: const Text(
+                        "Save Preferences",
+                        style: TextStyle(color: Colors.white),
+                      ),
+                    ),
+                  ),
+                )
+              ],
+            ),
           ),
         ),
       ),

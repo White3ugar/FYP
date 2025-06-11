@@ -265,16 +265,16 @@ Future<void> saveNotificationPreference() async {
   try {
     final docSnapshot = await docRef.get();
 
-    // Check if allowNotification is explicitly false
+    // Check if allowNotification is already explicitly set to true or false
     if (docSnapshot.exists) {
       final data = docSnapshot.data();
-      if (data != null && data['allowNotification'] == false) {
-        Logger().i("🔕 Notification preference is explicitly false — skipping update.");
+      if (data != null && data.containsKey('allowNotification')) {
+        Logger().i("🔕 Notification preference already set to ${data['allowNotification']} — skipping update.");
         return;
       }
     }
 
-    // Set allowNotification to true (or create it)
+    // Set allowNotification to true (only if it's not explicitly set)
     await docRef.set({'allowNotification': true}, SetOptions(merge: true));
     Logger().i("✅ Notification preference set to true for user: ${user.uid}");
   } catch (e) {
@@ -409,15 +409,32 @@ class LoginPageState extends State<LoginPage> {
 
       fb_auth.User? user = userCredential.user;
       if (user != null) {
-
-        if(!mounted)  return; // Check if the widget is still mounted
+        if (!mounted) return;
 
         if (user.emailVerified) {
-          // ✅ Navigate to HomePage if email is verified
-          Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(builder: (context) => const HomePage()),
-          );
+          // ✅ Check if user preferences exist
+          final userDetailsSnapshot = await _firestore.collection('users').doc(user.uid).get();
+          final userData = userDetailsSnapshot.data();
+
+          if (!mounted) return;
+
+          setState(() {
+            _isLoading = false;
+          });
+
+          if (userData != null && userData.containsKey('occupation')) {
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(builder: (context) => const HomePage()),
+            );
+          } else {
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(
+                builder: (context) => const UserPreferencesPage(fromPage: 'main'),
+              ),
+            );
+          }
         } else {
           // ❌ Show alert if email is NOT verified
           _showAlertDialog("Email Not Verified", "Please verify your email before logging in");
@@ -433,6 +450,8 @@ class LoginPageState extends State<LoginPage> {
       } else if (e.code == "too-many-requests") {
         errorMessage = "Too many login attempts. Try again later.";
       }
+
+      if (!mounted) return;
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(errorMessage)),
@@ -453,6 +472,7 @@ class LoginPageState extends State<LoginPage> {
       'budgetPlanName': name,
       'budgetPlanStart': now,
       'budgetPlanEnd': now.add(duration),
+      'budgetStatus': 'Active',
     });
 
     final contentsRef = planDocRef.collection('budget_contents');
@@ -602,7 +622,10 @@ class LoginPageState extends State<LoginPage> {
       _isLoading = false;
     });
 
-    // **Step 8: Navigate to appropriate page based on user preferences**
+    // **Step 8: Save notification preference for the user**
+    await saveNotificationPreference();
+
+    // **Step 9: Navigate to appropriate page based on user preferences availability**
     final userDetailsSnapshot = await _firestore.collection('users').doc(user.uid).get();
     final userData = userDetailsSnapshot.data();
 
@@ -652,103 +675,219 @@ class LoginPageState extends State<LoginPage> {
   Widget build(BuildContext context) {
     final screenHeight = MediaQuery.of(context).size.height;
     return Scaffold(
-      body: Center(
-        child: SingleChildScrollView( 
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              SizedBox(height: screenHeight * 0.25),      
-              const Text(
-                'Sparx Financial Assistance',
-                style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 10),
-              const Text(
-                'Welcome',
-                style: TextStyle(fontSize: 20, fontWeight: FontWeight.w500),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 40),
-
-              // Email field
-              TextField(
-                controller: _emailController,
-                decoration: InputDecoration(
-                  labelText: 'Email',
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 20),
-
-              // Password field
-              TextField(
-                controller: _passwordController,
-                obscureText: true,
-                decoration: InputDecoration(
-                  labelText: 'Password',
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 20),
-
-              ElevatedButton(
-                onPressed: _signInWithEmail,
-                child: const Text('Login'),
-              ),
-
-              const SizedBox(height: 50),
-              const Row(
-                children: [
-                  Expanded(child: Divider(thickness: 1)),
-                  Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 8.0),
-                    child: Text(
-                      'Or Continue With',
-                      style: TextStyle(fontSize: 15, fontWeight: FontWeight.w500),
-                    ),
-                  ),
-                  Expanded(child: Divider(thickness: 1)),
-                ],
-              ),
-
-              const SizedBox(height: 25),
-              // Google Sign-In button
-              _isLoading
-                ? const CircularProgressIndicator()
-                : ElevatedButton(
-                    onPressed: _signInWithGoogle,
-                    style: ElevatedButton.styleFrom(
-                      padding: const EdgeInsets.all(12.0),
-                      shape: const CircleBorder(),
-                      backgroundColor: Colors.white,
-                      elevation: 3,
-                    ),
-                    child: Image.asset(
-                      'assets/icon/google.png',
-                      height: 30,
-                      width: 30,
-                    ),
-                  ),
-
-              const SizedBox(height: 80),
-              const Text('First Time User?'),
-              TextButton(
-                onPressed: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (context) => const RegisterPage()),
-                  );
-                },
-                child: const Text('Register Now!'),
-              ),
-              SizedBox(height: screenHeight * 0.05),
+      body: Container(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              Color.fromRGBO(255, 216, 218, 1), 
+              Color.fromARGB(255, 241, 109, 231),
             ],
+          ),
+        ),
+        child: Center(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                SizedBox(height: screenHeight * 0.18),
+                const Text(
+                  'Sparx\nFinancial\nAssistance',
+                  style: TextStyle(fontSize: 38,  color: Color.fromARGB(255, 165, 35, 226)),
+                  textAlign: TextAlign.center,
+                ),
+
+                const SizedBox(height: 40),
+
+                // Email field
+                SizedBox(
+                  width: 280,
+                  height: 50,
+                  child: TextField(
+                    controller: _emailController,
+                    textAlign: TextAlign.center, // Centers user input text
+                    decoration: InputDecoration(
+                      hintText: 'Email',
+                      hintStyle: const TextStyle(
+                        color: Color.fromARGB(255, 165, 35, 226),
+                        fontWeight: FontWeight.w500,
+                      ),
+                      filled: true,
+                      fillColor: Colors.white,
+                      contentPadding: const EdgeInsets.symmetric(vertical: 15.0, horizontal: 20.0),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(30),
+                        borderSide: const BorderSide(
+                          color: Color.fromARGB(255, 165, 35, 226),
+                        ),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(30),
+                        borderSide: const BorderSide(
+                          color: Color.fromARGB(255, 165, 35, 226),
+                          width: 2.0,
+                        ),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(30),
+                        borderSide: const BorderSide(
+                          color: Color.fromARGB(255, 165, 35, 226),
+                        ),
+                      ),
+                    ),
+                    textAlignVertical: TextAlignVertical.center,
+                  ),
+                ),
+
+                const SizedBox(height: 20),
+
+                // Password field
+                SizedBox(
+                  width: 280,
+                  height: 50,
+                  child: TextField(
+                    controller: _passwordController,
+                    obscureText: true,
+                    textAlign: TextAlign.center, // Center the input and hint text
+                    decoration: InputDecoration(
+                      hintText: 'Password',
+                      hintStyle: const TextStyle(
+                        color: Color.fromARGB(255, 165, 35, 226),
+                        fontWeight: FontWeight.w500,
+                      ),
+                      filled: true,
+                      fillColor: Colors.white,
+                      contentPadding: const EdgeInsets.symmetric(vertical: 15.0, horizontal: 20.0),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(30),
+                        borderSide: const BorderSide(
+                          color: Color.fromARGB(255, 165, 35, 226),
+                        ),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(30),
+                        borderSide: const BorderSide(
+                          color: Color.fromARGB(255, 165, 35, 226),
+                          width: 2.0,
+                        ),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(30),
+                        borderSide: const BorderSide(
+                          color: Color.fromARGB(255, 165, 35, 226),
+                        ),
+                      ),
+                    ),
+                    textAlignVertical: TextAlignVertical.center,
+                  ),
+                ),
+
+                const SizedBox(height: 30),
+
+                // Login button
+                SizedBox(
+                  width: 100, 
+                  height: 40, 
+                  child: ElevatedButton(
+                    onPressed: _signInWithEmail,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.white,
+                      foregroundColor: const Color.fromARGB(255, 165, 35, 226),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(30),
+                      ),
+                      padding: EdgeInsets.zero, 
+                    ),
+                    child: const Text(
+                      'Login',
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                ),
+
+                const SizedBox(height: 50),
+
+                const Row(
+                  children: [
+                    Expanded(
+                      child: Divider(
+                        thickness: 1,
+                        color: Colors.white, 
+                      ),
+                    ),
+                    Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 8.0),
+                      child: Text(
+                        'Or Continue With',
+                        style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.bold,
+                          color: Color.fromARGB(255, 165, 35, 226), 
+                        ),
+                      ),
+                    ),
+                    Expanded(
+                      child: Divider(
+                        thickness: 1,
+                        color: Colors.white, 
+                      ),
+                    ),
+                  ],
+                ),
+
+                const SizedBox(height: 25),
+
+                // Google Sign-In button
+                _isLoading
+                    ? const CircularProgressIndicator(color: Colors.white,)
+                    : ElevatedButton(
+                        onPressed: _signInWithGoogle,
+                        style: ElevatedButton.styleFrom(
+                          padding: const EdgeInsets.all(12.0),
+                          shape: const CircleBorder(),
+                          backgroundColor: Colors.white,
+                          elevation: 3,
+                        ),
+                        child: Image.asset(
+                          'assets/icon/google.png',
+                          height: 30,
+                          width: 30,
+                        ),
+                      ),
+
+                const SizedBox(height: 70),
+
+                const Text(
+                  'First Time User?',
+                  style: TextStyle(color: Color.fromARGB(255, 165, 35, 226),fontWeight: FontWeight.bold),
+                ),
+
+                TextButton(
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      PageRouteBuilder(
+                        pageBuilder: (context, animation, secondaryAnimation) => const RegisterPage(),
+                        transitionDuration: Duration.zero,
+                        reverseTransitionDuration: Duration.zero,
+                      ),
+                    );
+                  },
+                  child: const Text(
+                    'Register Now!',
+                    style: TextStyle(
+                      color: Colors.white,
+                    ),
+                  ),
+                ),
+
+                SizedBox(height: screenHeight * 0.05),
+              ],
+            ),
           ),
         ),
       ),

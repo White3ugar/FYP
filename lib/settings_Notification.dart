@@ -63,6 +63,7 @@ class _NotificationManagerPageState extends State<NotificationManagerPage> {
 
   @override
   Widget build(BuildContext context) {
+    final screenWidth = MediaQuery.of(context).size.width;
     return Scaffold(
       appBar: AppBar(
         backgroundColor: Colors.white,
@@ -76,12 +77,12 @@ class _NotificationManagerPageState extends State<NotificationManagerPage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text(
+                  Text(
                     "Notification Settings",
                     style: TextStyle(
-                      fontSize: 22,
+                      fontSize: screenWidth * 0.065,
                       fontWeight: FontWeight.bold,
-                      color: Color.fromARGB(255, 165, 35, 226),
+                      color: const Color.fromARGB(255, 165, 35, 226),
                     ),
                   ),
                   const SizedBox(height: 24),

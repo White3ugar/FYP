@@ -107,7 +107,7 @@ class _BudgetArchivePageState extends State<BudgetArchivePage> {
           ),
           Expanded(
             child: _isLoading
-                ? const Center(child: CircularProgressIndicator())
+                ? const Center(child: CircularProgressIndicator(color: Color.fromARGB(255, 165, 35, 226),))
                 : _archivedBudgets.isEmpty
                     ? const Center(child: Text("No archived budget plans."))
                     : ListView.builder(
@@ -172,7 +172,7 @@ class _BudgetArchivePageState extends State<BudgetArchivePage> {
                                         ],
                                       ),
                                     );
-                                  }).toList(),
+                                  })
                                 ],
                               ),
                             ),

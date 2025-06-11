@@ -312,7 +312,7 @@ class HomePageState extends State<HomePage> {
           context,
           PageRouteBuilder(
             pageBuilder: (context, animation, secondaryAnimation) => const LoginPage(),
-            transitionDuration: Duration.zero, // No animation
+            transitionDuration: Duration.zero, 
             reverseTransitionDuration: Duration.zero,
           ),
           (route) => false,
