@@ -168,6 +168,7 @@ Future<void> checkAndRepeatTransactions(FirebaseFirestore firestore, String uid,
         final category = data['category'];
         final desc = data['description'];
         final monthAbbr = _getMonthAbbreviation(repeatDate.month);
+        final formattedDate = "${repeatDate.day.toString().padLeft(2, '0')}-${repeatDate.month.toString().padLeft(2, '0')}-${repeatDate.year}";
 
         final newTx = {
           'userId': uid,
@@ -188,17 +189,34 @@ Future<void> checkAndRepeatTransactions(FirebaseFirestore firestore, String uid,
             .doc(uid)
             .collection('Months')
             .doc(monthAbbr)
-            .collection("${repeatDate.day.toString().padLeft(2, '0')}-${repeatDate.month.toString().padLeft(2, '0')}-${repeatDate.year}");
+            .collection(formattedDate);
 
         await txRef.add(newTx);
 
-        // Update monthly total
+        // Update monthly total + availableDates
         final monthlyRef = firestore.collection(type).doc(uid).collection('Months').doc(monthAbbr);
         final monthlySnap = await monthlyRef.get();
         final totalKey = type == 'incomes' ? 'Monthly_Income' : 'Monthly_Expense';
-        final currentTotal = (monthlySnap.data()?[totalKey] ?? 0).toDouble();
-        await monthlyRef.set({totalKey: currentTotal + amount}, SetOptions(merge: true));
 
+        double currentTotal = 0;
+        List<String> availableDates = [];
+
+        if (monthlySnap.exists) {
+          final monthlyData = monthlySnap.data() as Map<String, dynamic>;
+          currentTotal = (monthlyData[totalKey] ?? 0).toDouble();
+          availableDates = List<String>.from(monthlyData['availableDates'] ?? []);
+        }
+
+        if (!availableDates.contains(formattedDate)) {
+          availableDates.add(formattedDate);
+        }
+
+        await monthlyRef.set({
+          totalKey: currentTotal + amount,
+          'availableDates': availableDates,
+        }, SetOptions(merge: true));
+
+        // Update lastRepeated in recurring entry
         await doc.reference.update({'lastRepeated': repeatDate});
       }
     }

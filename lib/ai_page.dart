@@ -231,12 +231,33 @@ class _AIPageState extends State<AIPage> {
         final endDateStr = datePeriod['endDate'];
         startDate = DateTime.parse(startDateStr);
         endDate = DateTime.parse(endDateStr);
+
+        final now = DateTime.now();
+        // Adjust to current year if needed
+        if (startDate.year != now.year) {
+          startDate = DateTime(now.year, startDate.month, startDate.day);
+        }
+        if (endDate.year != now.year) {
+          endDate = DateTime(now.year, endDate.month, endDate.day);
+        }
+
         finalPrompt = "$finalPrompt from ${startDate.toLocal()} to ${endDate.toLocal()}";
+        logger.i("Using date period: $startDate to $endDate");
       } else if (date.isNotEmpty) {
         final specificDate = DateTime.parse(date);
-        startDate = specificDate;
-        endDate = specificDate;
+        final now = DateTime.now();
+
+        // Adjust to current year if different
+        if (specificDate.year != now.year) {
+          startDate = DateTime(now.year, specificDate.month, specificDate.day);
+          endDate = startDate;
+        } else {
+          startDate = specificDate;
+          endDate = specificDate;
+        }
+
         finalPrompt = "$finalPrompt for ${startDate.toLocal()}";
+        logger.i("Using specific date: $startDate");
       }
 
       final uid = getCurrentUserID();
