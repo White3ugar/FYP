@@ -49,6 +49,7 @@ class HomePageState extends State<HomePage> {
   @override
   void initState() {
     super.initState();
+    triggerBudgetBackgroundTask();
     _fetchUsername();
     _fetchExpenseIncomeForCurrentMonth();  // Fetch both monthly expense and income
     _fetchExpensesSummary(); // Check and repeat transactions

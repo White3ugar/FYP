@@ -1,168 +1,563 @@
-  // for usage in home_page.dart
-  // define this function and call it at initState()  
-  
-  // Function to check and repeat transactions;
-  // This function checks for recurring transactions and creates new ones if needed
-  // Future<void> checkAndRepeatTransactions() async {
-  //   final user = _auth.currentUser;
-  //   if (user == null) return;
+import 'package:flutter/material.dart';
+import 'package:firebase_vertexai/firebase_vertexai.dart';
+import 'package:logger/logger.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:googleapis_auth/auth_io.dart';
+import 'package:flutter/services.dart';
+import 'dart:convert';
+import 'expenseRecord_page.dart';
+import 'budgeting_page.dart';
+import 'home_page.dart';
+import 'dataVisual_page.dart';
 
-  //   final userId = user.uid;
-  //   final today = DateTime.now();
-  //   final oriDate = today;
 
-  //   try {
-  //     if (!mounted) return;
-  //     setState(() {
-  //       isLoading = true;
-  //     });
+//const String _apiKey = String.fromEnvironment('GEMINI_API_KEY');
 
-  //     // Get recurring transactions for both income and expense
-  //     final incomeRecurringSnapshot = await _firestore
-  //         .collection('incomes')
-  //         .doc(userId)
-  //         .collection('Recurring')
-  //         .get();
+class DialogflowService {
+  final String projectId = 'fyp1-f09f5';
+  final String languageCode = 'en'; //Define the language code for Dialogflow
+    final Logger logger = Logger();
 
-  //     final expenseRecurringSnapshot = await _firestore
-  //         .collection('expenses')
-  //         .doc(userId)
-  //         .collection('Recurring')
-  //         .get();
+  Future<Map<String, dynamic>> detectIntent(String query) async {
+    // Log the incoming query
+    logger.i("Sending query to Dialogflow: $query");
 
-  //     // Combine both snapshots
-  //     final combinedRecurringDocs = [
-  //       ...incomeRecurringSnapshot.docs
-  //           .map((doc) => {'doc': doc, 'type': 'incomes'}),
-  //       ...expenseRecurringSnapshot.docs
-  //           .map((doc) => {'doc': doc, 'type': 'expenses'}),
-  //     ];
+    // Load service account credentials
+    final serviceAccountJson = await rootBundle.loadString('assets/credential/fyp1-f09f5-276ff280519c.json');
+    final credentials = ServiceAccountCredentials.fromJson(serviceAccountJson);
 
-  //     for (var entry in combinedRecurringDocs) {
-  //       final recurringTransactionDoc = entry['doc'] as QueryDocumentSnapshot; // Document reference
-  //       final recurringTransactionDataFields = recurringTransactionDoc.data() as Map<String, dynamic>?; // Data map
+    // Authorize using scopes required by Dialogflow
+    final client = await clientViaServiceAccount(
+      credentials,
+      ['https://www.googleapis.com/auth/cloud-platform'],
+    );
 
-  //       if (recurringTransactionDataFields == null) continue; // skip if data is null
+    // Generate a unique session ID
+    final sessionId = DateTime.now().millisecondsSinceEpoch.toString();
 
-  //       final repeatType = recurringTransactionDataFields['repeat'];
-  //       final lastRepeated = recurringTransactionDataFields['lastRepeated'];
-  //       final description = recurringTransactionDataFields['description'];
-  //       final List<String> selectedBudgetPlans = recurringTransactionDataFields['budgetPlans'] != null
-  //           ? List<String>.from(recurringTransactionDataFields['budgetPlans'])
-  //           : [];
+    final url = Uri.parse(
+      'https://dialogflow.googleapis.com/v2/projects/$projectId/agent/sessions/$sessionId:detectIntent',
+    );
 
-  //       if (repeatType == 'None' || repeatType == null || lastRepeated == null) {
-  //         continue;
-  //       }
+    final response = await client.post(
+      url,
+      headers: {'Content-Type': 'application/json; charset=utf-8'},
+      body: jsonEncode({
+        'queryInput': {
+          'text': {
+            'text': query,
+            'languageCode': languageCode,
+          }
+        }
+      }),
+    );
 
-  //       final lastRepeatedDate = (lastRepeated is Timestamp)
-  //           ? lastRepeated.toDate()
-  //           : DateTime.tryParse(lastRepeated.toString()) ?? today;
+    if (response.statusCode == 200) {
+      final json = jsonDecode(response.body);
+      logger.i("Dialogflow response: ${json['queryResult']['parameters']}");
+      return json['queryResult']['parameters'] ?? {};
+    } else {
+      logger.e("Dialogflow request failed: ${response.body}");
+      throw Exception('Dialogflow request failed: ${response.body}');
+    }
+  }
+}
 
-  //       // Calculate the total number of days since the last repeated date
-  //       int daysDifference = today.difference(lastRepeatedDate).inDays;
+class AIPage extends StatefulWidget {
+  const AIPage({super.key});
 
-  //       // Loop over the days to repeat transactions for each missed day
-  //       for (int i = 1; i <= daysDifference; i++) {
-  //         final dateToRepeat = lastRepeatedDate.add(Duration(days: i));
+  @override
+  State<AIPage> createState() => _AIPageState();
+}
 
-  //         // Determine if the transaction should repeat on this day
-  //         bool shouldRepeat = false;
-  //         if (repeatType == 'Daily') {
-  //           shouldRepeat = true;
-  //         } else if (repeatType == 'Weekly') {
-  //           shouldRepeat = dateToRepeat.difference(lastRepeatedDate).inDays >= 7;
-  //         } else if (repeatType == 'Monthly') {
-  //           shouldRepeat = dateToRepeat.month != lastRepeatedDate.month ||
-  //               dateToRepeat.year != lastRepeatedDate.year;
-  //         } 
-          
-  //         if (shouldRepeat) {
-  //           final amount = (recurringTransactionDataFields['amount'] ?? 0).toDouble();
-  //           final category = recurringTransactionDataFields['category'];
+class _AIPageState extends State<AIPage> {
+  final logger = Logger();
+  late final GenerativeModel _model;
+  late final ChatSession _chat;
+  final TextEditingController _textController = TextEditingController();
+  final ScrollController _scrollController = ScrollController();
+  bool _loading = false;
+  final List<({Image? image, String? text, bool fromUser})> _generatedContent = [];
 
-  //           final collectionPath = recurringTransactionDoc.reference.path.contains('incomes') ? 'incomes' : 'expenses';
-  //           logger.i("home_page Line 292: Collection path is $collectionPath");
-  //           final monthAbbr = _getMonthAbbreviation(today.month);
+  // Initialize dialogflowService
+  final DialogflowService dialogflowService = DialogflowService(); 
 
-  //           final newTransaction = {
-  //             'userId': userId,
-  //             'amount': amount,
-  //             'repeat': repeatType,
-  //             'category': category,
-  //             'description': description,
-  //             'date': dateToRepeat,
-  //             'lastRepeated': oriDate,
-  //           };
+  @override
+  void initState() {
+    super.initState();
 
-  //           if (collectionPath == 'expenses') {
-  //             newTransaction['budgetPlans'] = selectedBudgetPlans;
-  //           }
+    _model = FirebaseVertexAI.instance.generativeModel(
+      model: 'gemini-2.0-flash',
+      systemInstruction: Content.text(
+        "You are a friendly and energetic financial assistant named Sparx. If the user asks something not related to finance, "
+        "politely inform them that you are not able to assist with that. "
+        "Do not explicitly mention that you cannot assist with non-financial topics unless the user asks about them. "
+        "You will receive user profile details (such as occupation, income range, and financial goals). "
+        "These are provided for context only — do not use or refer to this information unless it helps answer a finance-related question explicitly asked by the user. "
+        "If the user does not ask a financial question, do not mention the user profile at all. "
+        "Provide concise, clear, and engaging responses. Avoid using the '*' symbol. "
+        "Start directly with the answer—do not use phrases like 'Based on...'. "
+        "Include specific values for each expense category when giving reviews or recommendations. "
+        "Keep responses under 12 sentences."
+      ),
+    );
+    _chat = _model.startChat();
+  }
 
-  //           final userDocRef = _firestore.collection(collectionPath).doc(userId); // Reference to the user's document for the collection expenses or incomes
-  //           final dateCollectionRef = userDocRef
-  //               .collection('Months')
-  //               .doc(monthAbbr)
-  //               .collection("${dateToRepeat.day.toString().padLeft(2, '0')}-${dateToRepeat.month.toString().padLeft(2, '0')}-${dateToRepeat.year}");
+  String? getCurrentUserID() {
+    final user = FirebaseAuth.instance.currentUser;
+    return user?.uid;
+  }
 
-  //           await dateCollectionRef.add(newTransaction);
+  String getMonthAbbreviation(DateTime date) {
+    const List<String> monthAbbreviations = [
+      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
+    ];
+    return monthAbbreviations[date.month - 1];
+  }
 
-  //           final monthlyRef = userDocRef.collection('Months').doc(monthAbbr);
-  //           final monthlySnapshot = await monthlyRef.get();
+  void _scrollToBottom() {
+    WidgetsBinding.instance.addPostFrameCallback(
+      (_) => _scrollController.animateTo(
+        _scrollController.position.maxScrollExtent,
+        duration: const Duration(milliseconds: 750),
+        curve: Curves.easeOutCirc,
+      ),
+    );
+  }
 
-  //           String totalKey = collectionPath == 'incomes' ? 'Monthly_Income' : 'Monthly_Expense';
-  //           double currentTotal = 0;
-  //           if (monthlySnapshot.exists) {
-  //             final monthlyData = monthlySnapshot.data() ?? {};
-  //             currentTotal = (monthlyData[totalKey] ?? 0).toDouble();
-  //           }
+  Future<String> fetchAndSummarizeExpenses(String userID, DateTime startDate, DateTime endDate) async {
+    final FirebaseFirestore firestore = FirebaseFirestore.instance;
+    final Map<String, double> categoryTotals = {};
+    double total = 0.0;
 
-  //           // Update the monthly total for income or expense
-  //           await monthlyRef.set({
-  //             totalKey: currentTotal + amount,
-  //           }, SetOptions(merge: true));
+    // Generate list of months between startDate and endDate
+    DateTime monthCursor = DateTime(startDate.year, startDate.month);
+    final DateTime endMonth = DateTime(endDate.year, endDate.month);
 
-  //           // Update the last repeated date in the recurring transaction document
-  //           await recurringTransactionDoc.reference.update({'lastRepeated': dateToRepeat});
-  //         }
-  //       }
-  //     }
+    while (!monthCursor.isAfter(endMonth)) {
+      final String monthName = getMonthAbbreviation(monthCursor);
+      final monthDocRef = firestore.collection('expenses').doc(userID).collection('Months').doc(monthName);
+      logger.i("Fetching data for userID: $userID, month: $monthName");
 
-  //     // Update the monthly data for income and expense
-  //     final income = await _fetchMonthlyData(
-  //       userId: userId,
-  //       month: _getMonthAbbreviation(today.month),
-  //       collectionName: 'incomes',
-  //       fieldName: 'Monthly_Income',
-  //     );
+      final monthSnapshot = await monthDocRef.get();
+      if (!monthSnapshot.exists) {
+        logger.w("No data found for month: $monthName");
+        monthCursor = DateTime(monthCursor.year, monthCursor.month + 1);
+        continue;
+      }
 
-  //     final expense = await _fetchMonthlyData(
-  //       userId: userId,
-  //       month: _getMonthAbbreviation(today.month),
-  //       collectionName: 'expenses',
-  //       fieldName: 'Monthly_Expense',
-  //     );
+      final availableDates = List<String>.from(monthSnapshot.data()?['availableDates'] ?? []);
+      logger.i("Available dates in $monthName: $availableDates");
 
-  //     if (mounted) {
-  //       await _fetchTodayExpenseIncome(); // refresh today's view
-  //     }
+      for (String dateStr in availableDates) {
+        final parts = dateStr.split('-');
+        if (parts.length != 3) continue;
 
-  //     if (mounted) {
-  //       setState(() {
-  //         monthlyIncome = income;
-  //         monthlyExpense = expense;
-  //         isLoading = false;
-  //       });
-  //     }
+        final parsedDate = DateTime(
+          int.parse(parts[2]),
+          int.parse(parts[1]),
+          int.parse(parts[0]),
+        );
 
-  //     logger.i("Done to check recurring transactions");
-  //   } catch (e) {
-  //     logger.e("Failed to check recurring transactions: $e");
+        if (parsedDate.isAfter(startDate.subtract(const Duration(days: 1))) &&
+            parsedDate.isBefore(endDate.add(const Duration(days: 1)))) {
+          logger.i("Processing date: $dateStr");
+          final dayCollectionRef = monthDocRef.collection(dateStr);
+          final dayDocs = await dayCollectionRef.get();
 
-  //     if (mounted) {
-  //       setState(() {
-  //         isLoading = false;
-  //       });
-  //     }
-  //   }
-  // }
+          if (dayDocs.docs.isEmpty) {
+            logger.w("No documents found for date: $dateStr");
+          }
+
+          for (var doc in dayDocs.docs) {
+            final data = doc.data();
+            final String category = data['category'] ?? 'Uncategorized';
+            final double amount = (data['amount'] as num?)?.toDouble() ?? 0.0;
+
+            logger.i("Fetched record - Date: $dateStr, Category: $category, Amount: RM${amount.toStringAsFixed(2)}");
+
+            categoryTotals[category] = (categoryTotals[category] ?? 0.0) + amount;
+            total += amount;
+          }
+        }
+      }
+
+      // Move to next month
+      monthCursor = DateTime(monthCursor.year, monthCursor.month + 1);
+    }
+
+    if (categoryTotals.isEmpty) {
+      return 'No expense data found for the given period.';
+    }
+
+    final buffer = StringBuffer('Expense summary for the period from $startDate to $endDate:\n');
+    categoryTotals.forEach((category, amt) {
+      buffer.writeln('- $category: RM${amt.toStringAsFixed(2)}');
+    });
+    buffer.writeln('Total: RM${total.toStringAsFixed(2)}');
+    return buffer.toString();
+  }
+
+
+  Future<void> _sendMessage() async {
+    if (_textController.text.isEmpty) return;
+
+    final String userPrompt = _textController.text;
+    _textController.clear();
+
+    setState(() {
+      _loading = true;
+      _generatedContent.add((image: null, text: userPrompt, fromUser: true));
+    });
+    _scrollToBottom();
+
+    try {
+      logger.i("User prompt: $userPrompt");
+
+      String finalPrompt = userPrompt;
+      final dialogflowResponse = await dialogflowService.detectIntent(userPrompt);
+
+      final date = dialogflowResponse['date'] ?? '';
+      final datePeriod = dialogflowResponse['date-period'] ?? {};
+
+      DateTime? startDate;
+      DateTime? endDate;
+
+      if (datePeriod.isNotEmpty) {
+        final startDateStr = datePeriod['startDate'];
+        final endDateStr = datePeriod['endDate'];
+        startDate = DateTime.parse(startDateStr);
+        endDate = DateTime.parse(endDateStr);
+
+        final now = DateTime.now();
+        // Adjust to current year if needed
+        if (startDate.year != now.year) {
+          startDate = DateTime(now.year, startDate.month, startDate.day);
+        }
+        if (endDate.year != now.year) {
+          endDate = DateTime(now.year, endDate.month, endDate.day);
+        }
+
+        finalPrompt = "$finalPrompt from ${startDate.toLocal()} to ${endDate.toLocal()}";
+        logger.i("Using date period: $startDate to $endDate");
+      } else if (date.isNotEmpty) {
+        final specificDate = DateTime.parse(date);
+        final now = DateTime.now();
+
+        // Adjust to current year if different
+        if (specificDate.year != now.year) {
+          startDate = DateTime(now.year, specificDate.month, specificDate.day);
+          endDate = startDate;
+        } else {
+          startDate = specificDate;
+          endDate = specificDate;
+        }
+
+        finalPrompt = "$finalPrompt for ${startDate.toLocal()}";
+        logger.i("Using specific date: $startDate");
+      }
+
+      final uid = getCurrentUserID();
+      if (uid == null) throw Exception("User not logged in.");
+
+      // Fetch user preferences from Firestore
+      final prefsDoc = await FirebaseFirestore.instance.collection('users').doc(uid).get();
+      final prefs = prefsDoc.data() ?? {};
+
+      final occupation = prefs['occupation'] ?? 'not specified';
+      final incomeRange = prefs['incomeRange'] ?? 'not specified';
+      final financialGoals = prefs['financialGoals'] ?? 'not specified';
+      final financeMethod = prefs['financeMethod'] ?? 'not specified';
+      final spendingPriority = (prefs['spendingPriority'] as List<dynamic>?)?.join(', ') ?? 'none';
+
+      String preferenceSummary = '''
+        User Profile:
+        - Occupation: $occupation
+        - Income Range: $incomeRange
+        - Financial Goals: $financialGoals
+        - Finance Management Method: $financeMethod
+        - Spending Priorities: $spendingPriority
+        ''';
+
+      // If there's a specific date range, get summary
+      if (startDate != null && endDate != null) {
+        final summary = await fetchAndSummarizeExpenses(uid, startDate, endDate);
+
+        if (summary.isEmpty || summary.contains('No expense data')) {
+          finalPrompt = "$preferenceSummary\nExplain in friendly: No record found in this date period.\n\n$userPrompt";
+        } else {
+          finalPrompt = "$preferenceSummary\n$summary\n\n$userPrompt";
+        }
+      } else {
+        finalPrompt = "$preferenceSummary\n$userPrompt";
+      }
+
+      logger.i("Final prompt: $finalPrompt");
+
+      final response = await _chat.sendMessage(Content.text(finalPrompt));
+      final String? text = response.text;
+
+      if (text == null) {
+        _showError('No response from Gemini model.');
+        return;
+      } else {
+        setState(() {
+          _generatedContent.add((image: null, text: text, fromUser: false));
+          _loading = false;
+        });
+        _scrollToBottom();
+      }
+    } catch (e) {
+      logger.e("Error while sending message: $e");
+      _showError(e.toString());
+      setState(() => _loading = false);
+    }
+  }
+
+  void _showError(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message)),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    double screenWidth = MediaQuery.of(context).size.width;
+    double iconSize = screenWidth * 0.08;
+    return PopScope(
+      canPop: false,
+      onPopInvoked: (didPop) {
+        if (!didPop) {
+          Navigator.pushAndRemoveUntil(
+            context,
+            PageRouteBuilder(
+              pageBuilder: (context, animation, secondaryAnimation) => const HomePage(),
+              transitionDuration: Duration.zero,
+              reverseTransitionDuration: Duration.zero,
+            ),
+            (route) => false,
+          );
+        }
+      },
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text('Chat with Sparx!'),
+          leading: IconButton(
+            icon: const Icon(
+              Icons.arrow_back,
+              color: Color.fromARGB(255, 165, 35, 226),
+            ),
+            onPressed: () {
+              Navigator.pushAndRemoveUntil(
+                context,
+                PageRouteBuilder(
+                  pageBuilder: (context, animation, secondaryAnimation) => const HomePage(),
+                  transitionDuration: Duration.zero,
+                  reverseTransitionDuration: Duration.zero,
+                ),
+                (route) => false,
+              );
+            },
+          ),
+        ),
+        body: Padding(
+          padding: const EdgeInsets.all(8.0),
+          child: Column(
+            children: <Widget>[
+              Expanded(
+                child: ListView.builder(
+                  controller: _scrollController,
+                  itemCount: _generatedContent.length,
+                  itemBuilder: (context, index) {
+                    final content = _generatedContent[index];
+                    return MessageWidget(
+                      text: content.text,
+                      image: content.image,
+                      isFromUser: content.fromUser,
+                    );
+                  },
+                ),
+              ),
+              if (_loading) const CircularProgressIndicator(color: Color.fromARGB(255, 165, 35, 226)),
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 25, horizontal: 15),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: _textController,
+                        autofocus: true,
+                        decoration: InputDecoration(
+                          contentPadding: const EdgeInsets.all(15),
+                          hintText: 'How can I help you finance better?',
+                          border: OutlineInputBorder(
+                            borderRadius: const BorderRadius.all(Radius.circular(14)),
+                            borderSide: BorderSide(
+                              color: Theme.of(context).colorScheme.secondary,
+                            ),
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: const BorderRadius.all(Radius.circular(14)),
+                            borderSide: BorderSide(
+                              color: Theme.of(context).colorScheme.secondary,
+                            ),
+                          ),
+                        ),
+                        onSubmitted: !_loading ? (_) => _sendMessage() : null,
+                      ),
+                    ),
+                    const SizedBox.square(dimension: 15),
+                    IconButton(
+                      onPressed: !_loading ? _sendMessage : null,
+                      icon: Icon(
+                        Icons.send,
+                        color: _loading ? Colors.grey : const Color.fromARGB(255, 165, 35, 226),
+                      ),
+                    ),
+                  ]
+                )
+              ),
+            ],
+          ),
+        ),
+        bottomNavigationBar: _buildBottomAppBar(context, iconSize),
+      ),
+    );
+  }
+
+  Widget _buildBottomAppBar(BuildContext context, double iconSize) {
+    double screenWidth = MediaQuery.of(context).size.width;
+    double iconSpacing = screenWidth * 0.14;
+
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        boxShadow: [
+          BoxShadow(
+            color: Colors.grey.withOpacity(0.2),
+            spreadRadius: 1,
+            blurRadius: 6,
+            offset: const Offset(0, -3),
+          ),
+        ],
+      ),
+      child: BottomAppBar(
+        height: 100,
+        elevation: 0,
+        color: Colors.transparent,
+        shape: const CircularNotchedRectangle(),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 0, vertical: 10),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              _buildNavIconWithCaption(context, "assets/icon/record-book.png", "Record", iconSize, const ExpenseRecordPage()),
+              SizedBox(width: iconSpacing),
+              _buildNavIconWithCaption(context, "assets/icon/budget.png", "Budget", iconSize, const BudgetPage()),
+              SizedBox(width: iconSpacing),
+              _buildNavIconWithCaption(context, "assets/icon/dataVisual.png", "Graphs", iconSize, const DataVisualPage()),
+              SizedBox(width: iconSpacing),
+              _buildNavIconWithCaption(context, "assets/icon/chatbot.png", "AI", iconSize, const AIPage(), textColor: Colors.deepPurple),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildNavIconWithCaption(
+    BuildContext context,
+    String assetPath,
+    String caption,
+    double size,
+    Widget page, {
+    Color textColor = Colors.grey
+  }) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        GestureDetector(
+          onTap: () {
+            Navigator.push(
+              context,
+              PageRouteBuilder(
+                pageBuilder: (context, animation, secondaryAnimation) => page,
+                transitionDuration: Duration.zero,
+                reverseTransitionDuration: Duration.zero,
+              ),
+            );
+          },
+          child: SizedBox(
+            width: size,
+            height: size,
+            child: Image.asset(
+              assetPath,
+              fit: BoxFit.contain,
+            ),
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          caption,
+          style: TextStyle(
+            fontSize: 13,
+            color: textColor,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+// MessageWidget is a simple widget to display messages in the chat (Chat bubble)
+class MessageWidget extends StatelessWidget {
+  final String? text;
+  final Image? image;
+  final bool isFromUser;
+
+  const MessageWidget({
+    super.key,
+    this.text,
+    this.image,
+    required this.isFromUser,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisAlignment: isFromUser ? MainAxisAlignment.end : MainAxisAlignment.start,
+      children: [
+        Flexible(
+          child: Container(
+            constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.75),
+            padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 15),
+            margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
+            decoration: BoxDecoration(
+              color: isFromUser
+                  ? const Color.fromARGB(255, 165, 35, 226)
+                  : const Color.fromARGB(255, 239, 179, 236),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (image != null) image!,
+                if (text != null)
+                  Text(
+                    text!,
+                    style: TextStyle(
+                      color: isFromUser ? Colors.white : Colors.black,
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}

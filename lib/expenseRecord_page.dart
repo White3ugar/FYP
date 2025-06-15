@@ -12,6 +12,47 @@ import 'package:flutter_datetime_picker_plus/flutter_datetime_picker_plus.dart' 
 import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+ Future<void> triggerBudgetBackgroundTask() async {
+    final logger = Logger();
+    final uid = FirebaseAuth.instance.currentUser?.uid ?? '';
+    logger.i("📌 expenseRecord page: triggerBudgetBackgroundTask called with UID: $uid");
+
+    if (uid.isEmpty) {
+      logger.w('⚠️ User not logged in; cannot register periodic task');
+      return;
+    }
+
+    try {
+      //Register a one-off task to check budget thresholds
+       Workmanager().registerOneOffTask(
+          "ExpenseRepeatTransactionsTask",
+          "checkRecurringTransactions",
+          inputData: {'uid': uid},
+        );
+
+      final docSnapshot = await FirebaseFirestore.instance
+          .collection('notifications')
+          .doc(uid)
+          .get();
+
+      final allowNotification = docSnapshot.data()?['allowNotification'];
+
+      if (allowNotification == true) {
+        logger.i('🔔 Notifications allowed — registering one-off task for UID: $uid');
+
+        Workmanager().registerOneOffTask(
+          "expenseBudgetTask",
+          "checkBudgetThresholds",
+          inputData: {'uid': uid},
+        );
+      } else {
+        logger.i('🔕 Notifications are disabled — skipping one-off task registration');
+      }
+    } catch (e) {
+      logger.e("❌ Error checking notification preferences: $e");
+    }
+  }
+
 class ExpenseRecordPage extends StatefulWidget {
   const ExpenseRecordPage({super.key});
 
@@ -234,47 +275,6 @@ class _ExpenseRecordPageState extends State<ExpenseRecordPage> {
 
         break; // Plan name found and processed; skip other types
       }
-    }
-  }
-
-  Future<void> triggerBudgetBackgroundTask() async {
-    final logger = Logger();
-    final uid = FirebaseAuth.instance.currentUser?.uid ?? '';
-    logger.i("📌 expenseRecord page: triggerBudgetBackgroundTask called with UID: $uid");
-
-    if (uid.isEmpty) {
-      logger.w('⚠️ User not logged in; cannot register periodic task');
-      return;
-    }
-
-    try {
-      //Register a one-off task to check budget thresholds
-       Workmanager().registerOneOffTask(
-          "ExpenseRepeatTransactionsTask",
-          "checkRecurringTransactions",
-          inputData: {'uid': uid},
-        );
-
-      final docSnapshot = await FirebaseFirestore.instance
-          .collection('notifications')
-          .doc(uid)
-          .get();
-
-      final allowNotification = docSnapshot.data()?['allowNotification'];
-
-      if (allowNotification == true) {
-        logger.i('🔔 Notifications allowed — registering one-off task for UID: $uid');
-
-        Workmanager().registerOneOffTask(
-          "expenseBudgetTask",
-          "checkBudgetThresholds",
-          inputData: {'uid': uid},
-        );
-      } else {
-        logger.i('🔕 Notifications are disabled — skipping one-off task registration');
-      }
-    } catch (e) {
-      logger.e("❌ Error checking notification preferences: $e");
     }
   }
 

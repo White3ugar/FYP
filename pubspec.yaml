@@ -32,12 +32,12 @@ dependencies:
     sdk: flutter
   logger: ^1.0.0 # Logger package for logging messages
   dropdown_button2: ^2.3.9 # Dropdown button with search functionality
-  google_generative_ai: ^0.4.7 # Google Generative AI package for AI features
   google_sign_in: ^6.1.6 # Google Sign In package
   googleapis_auth: ^1.4.0 # Google APIs authentication package
   http: ^1.1.0 # HTTP package for making network requests
   image_picker: ^1.0.4 # Image picker package for selecting images from the gallery or camera
   intl: ^0.18.1 # Date and time formatting
+  firebase_ai: ^2.0.0 # Firebase AI package for integrating AI features
   firebase_vertexai: 0.2.3+1
   fl_chart: ^0.64.0 # Charting library for data visualization
   flutter_local_notifications: ^16.1.0 # Local notifications package for scheduling and displaying notifications

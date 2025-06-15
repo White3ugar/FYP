@@ -12,7 +12,7 @@ import 'home_page.dart';
 import 'dataVisual_page.dart';
 
 
-const String _apiKey = String.fromEnvironment('GEMINI_API_KEY');
+//const String _apiKey = String.fromEnvironment('GEMINI_API_KEY');
 
 class DialogflowService {
   final String projectId = 'fyp1-f09f5';
@@ -368,22 +368,18 @@ class _AIPageState extends State<AIPage> {
           child: Column(
             children: <Widget>[
               Expanded(
-                child: _apiKey.isNotEmpty
-                  ? ListView.builder(
-                      controller: _scrollController,
-                      itemCount: _generatedContent.length,
-                      itemBuilder: (context, index) {
-                        final content = _generatedContent[index];
-                        return MessageWidget(
-                          text: content.text,
-                          image: content.image,
-                          isFromUser: content.fromUser,
-                        );
-                      },
-                    )
-                  : const Center(
-                      child: Text("API Key not configured. Chat is disabled."),
-                    ),
+                child: ListView.builder(
+                  controller: _scrollController,
+                  itemCount: _generatedContent.length,
+                  itemBuilder: (context, index) {
+                    final content = _generatedContent[index];
+                    return MessageWidget(
+                      text: content.text,
+                      image: content.image,
+                      isFromUser: content.fromUser,
+                    );
+                  },
+                ),
               ),
               if (_loading) const CircularProgressIndicator(color: Color.fromARGB(255, 165, 35, 226)),
               Padding(
@@ -410,18 +406,18 @@ class _AIPageState extends State<AIPage> {
                             ),
                           ),
                         ),
-                        onSubmitted: _apiKey.isNotEmpty && !_loading ? (_) => _sendMessage() : null,
+                        onSubmitted: !_loading ? (_) => _sendMessage() : null,
                       ),
                     ),
                     const SizedBox.square(dimension: 15),
                     IconButton(
-                      onPressed: _apiKey.isNotEmpty && !_loading ? _sendMessage : null,
+                      onPressed: !_loading ? _sendMessage : null,
                       icon: Icon(
                         Icons.send,
                         color: _loading ? Colors.grey : const Color.fromARGB(255, 165, 35, 226),
                       ),
                     ),
-                  ],
+                  ]
                 )
               ),
             ],
